@@ -6,7 +6,7 @@
  * @Description: 请填写简介
  */
 #include "string.h"
-#include "Serial_Bus_Servo"
+#include "Serial_Bus_Servo.h"
 
 void servo_command(UART_HandleTypeDef *huart, char *command)
 {
