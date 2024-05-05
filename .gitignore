@@ -2,6 +2,7 @@
 *.o
 *.su
 *.cyclo
+*.exe
 Control_Unit/Software/Src/API_TEST/.metadata/
 Control_Unit/Software/开发资料/IMU/开发资料/WitStandardProtocol_JY901-main/STM32F1/STM32Core_SDK_Normal/MDK/Obj/
 Control_Unit/Software/开发资料/IMU/开发资料/WitStandardProtocol_JY901-main/C++/NORMAL_WIN_CPP/.vs/
