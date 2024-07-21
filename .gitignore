@@ -1,10 +1,57 @@
 #忽略调试生成的一些中间文件
+# Ignore other generated files
+build.ninja
+
+# Ignore project-specific files
+.mxproject
+
+# Ignore binaries and other compiled outputs
 *.o
-*.su
-*.cyclo
+*.a
+*.out
 *.exe
+*.dll
+*.so
+*.dylib
+
+# Ignore log and temporary files
 *.log
-.metadata
-Control_Unit/Software/Src/API_TEST/.metadata/
-Control_Unit/Software/开发资料/IMU/开发资料/WitStandardProtocol_JY901-main/STM32F1/STM32Core_SDK_Normal/MDK/Obj/
-Control_Unit/Software/开发资料/IMU/开发资料/WitStandardProtocol_JY901-main/C++/NORMAL_WIN_CPP/.vs/
+*.tmp
+*.bak
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Specific to STM32 projects
+# *.ioc
+*.ld
+*.bin
+*.hex
+*.elf
+*.map
+*.srec
+
+# Ignore core dumps and crash reports
+core.*
+*.core
+
+# Ignore IDE project files
+*.project
+*.cproject
+.idea/
+*.iml
+
+# 忽略 Control_Unit\Software
+
+.vscode
+build
+
+# Ignore CMake related files
+cmake/
+CMakeFiles/
+CMakeCache.txt
+CMakeLists.txt.user
+CMakePresets.json
+cmake_install.cmake
+compile_commands.json
