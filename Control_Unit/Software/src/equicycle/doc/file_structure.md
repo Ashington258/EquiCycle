@@ -1,6 +1,5 @@
 # 文件格式说明
 
-分析文件结构，书写gitignore文件
 .vscode/
 api/
 build/
