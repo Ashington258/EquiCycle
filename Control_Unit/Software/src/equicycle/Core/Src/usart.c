@@ -1,27 +1,27 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file    usart.c
-  * @brief   This file provides code for the configuration
-  *          of the USART instances.
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2024 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file    usart.c
+ * @brief   This file provides code for the configuration
+ *          of the USART instances.
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2024 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "usart.h"
 
 /* USER CODE BEGIN 0 */
-
+uint8_t WITIMU_DATA[50];
 /* USER CODE END 0 */
 
 UART_HandleTypeDef huart2;
@@ -69,23 +69,26 @@ void MX_USART2_UART_Init(void)
   }
   /* USER CODE BEGIN USART2_Init 2 */
 
+  // 开启串口空闲中断接收不定长数据
+  // HAL_UART_Receive_IT(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
+  __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT); // 禁止过半填充中断
   /* USER CODE END USART2_Init 2 */
-
 }
 
-void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
+void HAL_UART_MspInit(UART_HandleTypeDef *uartHandle)
 {
 
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
-  if(uartHandle->Instance==USART2)
+  if (uartHandle->Instance == USART2)
   {
-  /* USER CODE BEGIN USART2_MspInit 0 */
+    /* USER CODE BEGIN USART2_MspInit 0 */
 
-  /* USER CODE END USART2_MspInit 0 */
+    /* USER CODE END USART2_MspInit 0 */
 
-  /** Initializes the peripherals clock
-  */
+    /** Initializes the peripherals clock
+     */
     PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USART2;
     PeriphClkInitStruct.Usart234578ClockSelection = RCC_USART234578CLKSOURCE_D2PCLK1;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
@@ -101,7 +104,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
     PD5     ------> USART2_TX
     PD6     ------> USART2_RX
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_6;
+    GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_6;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -125,7 +128,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
       Error_Handler();
     }
 
-    __HAL_LINKDMA(uartHandle,hdmarx,hdma_usart2_rx);
+    __HAL_LINKDMA(uartHandle, hdmarx, hdma_usart2_rx);
 
     /* USART2_TX Init */
     hdma_usart2_tx.Instance = DMA1_Stream1;
@@ -143,25 +146,25 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
       Error_Handler();
     }
 
-    __HAL_LINKDMA(uartHandle,hdmatx,hdma_usart2_tx);
+    __HAL_LINKDMA(uartHandle, hdmatx, hdma_usart2_tx);
 
     /* USART2 interrupt Init */
     HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(USART2_IRQn);
-  /* USER CODE BEGIN USART2_MspInit 1 */
+    /* USER CODE BEGIN USART2_MspInit 1 */
 
-  /* USER CODE END USART2_MspInit 1 */
+    /* USER CODE END USART2_MspInit 1 */
   }
 }
 
-void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
+void HAL_UART_MspDeInit(UART_HandleTypeDef *uartHandle)
 {
 
-  if(uartHandle->Instance==USART2)
+  if (uartHandle->Instance == USART2)
   {
-  /* USER CODE BEGIN USART2_MspDeInit 0 */
+    /* USER CODE BEGIN USART2_MspDeInit 0 */
 
-  /* USER CODE END USART2_MspDeInit 0 */
+    /* USER CODE END USART2_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_USART2_CLK_DISABLE();
 
@@ -169,7 +172,7 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
     PD5     ------> USART2_TX
     PD6     ------> USART2_RX
     */
-    HAL_GPIO_DeInit(GPIOD, GPIO_PIN_5|GPIO_PIN_6);
+    HAL_GPIO_DeInit(GPIOD, GPIO_PIN_5 | GPIO_PIN_6);
 
     /* USART2 DMA DeInit */
     HAL_DMA_DeInit(uartHandle->hdmarx);
@@ -177,12 +180,46 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 
     /* USART2 interrupt Deinit */
     HAL_NVIC_DisableIRQ(USART2_IRQn);
-  /* USER CODE BEGIN USART2_MspDeInit 1 */
+    /* USER CODE BEGIN USART2_MspDeInit 1 */
 
-  /* USER CODE END USART2_MspDeInit 1 */
+    /* USER CODE END USART2_MspDeInit 1 */
   }
 }
 
 /* USER CODE BEGIN 1 */
+/**
+ * @brief UART扩展接收事件回调函数，用于接收来 huart2 的数据
+ *
+ * 该函数在UART接收缓冲区填满特定长度数据时被调用。具体用途是处理接收到的IMU数据，
+ * 并重新启动DMA接收以继续监听串口数据。
+ *
+ * @param huart 指向UART_HandleTypeDef结构体的指针，用于标识哪个UART设备触发了回调
+ * @param Size 接收到的数据长度，单位为字节
+ */
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+  // 检查回调的UART设备是否为预期的huart2
+  if (huart == &huart2)
+  {
+    // 解析接收到的IMU数据
+    parseIMUData(WITIMU_DATA, &imuData);
 
+    // TODO: 根据实际需要调用相关函数处理IMU数据，以下行注释掉的代码是一个例子
+    // ANO_Conver_16_16_16((int16_t)(imuData.angle.pitch * 100), (int16_t)(imuData.angle.roll * 100), (int16_t)(imuData.angle.yaw * 100));
+
+    // TODO: 根据实际需要调用相关函数处理姿态数据，以下行注释掉的代码是一个例子
+    // vofa_three(imuData.angle.roll, imuData.angle.pitch, imuData.gyro.gyroY);
+
+    // 重新启动DMA接收，继续监听串口数据
+    HAL_UARTEx_ReceiveToIdle_DMA(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
+
+    // 禁止DMA的半传输中断，避免过多的中断回调影响性能
+    __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT);
+  }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
+}
 /* USER CODE END 1 */

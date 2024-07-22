@@ -49,15 +49,16 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
     # Add user sources here
-    ${CMAKE_SOURCE_DIR}/api/wit_imu/wit_imu.c
-    
+    # ${CMAKE_SOURCE_DIR}/api/wit_imu/wit_imu.c
+    F:/1.Project/2.Ongoing_Projects/EquiCycle/Control_Unit/Software/src/equicycle/api/wit_imu/wit_imu.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
     # Add user defined include paths
-    ${CMAKE_SOURCE_DIR}/api/wit_imu
+    # ${CMAKE_SOURCE_DIR}/api/wit_imu
+    F:/1.Project/2.Ongoing_Projects/EquiCycle/Control_Unit/Software/src/equicycle/api/wit_imu/
 )
 
 # Add project symbols (macros)
