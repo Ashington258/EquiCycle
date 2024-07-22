@@ -1,5 +1,12 @@
 #include "interrupt.h"
 
+/*！！！！！！！！！
+该文件不允许外传
+代码是电气前几届学长写的
+lr只是优化一下
+涉及实验室纠纷，尽量避免外传
+！！！！！！！！！*/
+
 CENTER_STRUCT Car;
 
 void itrt_5ms(void)
