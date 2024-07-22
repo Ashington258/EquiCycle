@@ -118,7 +118,7 @@ void MX_USART2_UART_Init(void)
 
   // 开启串口空闲中断接收不定长数据
   // HAL_UART_Receive_IT(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
-  HAL_UARTEx_ReceiveToIdle_DMA(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
+  HAL_UARTEx_ReceiveToIdle_IT(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
   __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT); // 禁止过半填充中断
   /* USER CODE END USART2_Init 2 */
 }
@@ -292,9 +292,19 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef *uartHandle)
 
 /* USER CODE BEGIN 1 */
 
-HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+/**
+ * @brief UART接收完成回调函数
+ *
+ * 该函数仅作为测试 huart1 串口好坏
+ *
+ * @param huart 指向UART_HandleTypeDef结构体的指针，包含UART接口的相关信息
+ */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
+  // 发送预先定义的测试数据
   HAL_UART_Transmit_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
+
+  // 重新启动接收中断，继续接收数据
   // 再次开启接收中断
   HAL_UART_Receive_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
 }
@@ -310,10 +320,13 @@ HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
  */
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-  if (huart == &huart1)
+
+  if (huart == &huart1) // 该语句用于测试 huart1 串口，为后续vofa调参平台提供接口
   {
     // 将接收到的数据回传回去
     HAL_UART_Transmit_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
+    // 重新启动DMA接收，继续监听串口数据
+    HAL_UARTEx_ReceiveToIdle_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
   }
 
   // 检查回调的UART设备是否为预期的huart2
@@ -329,7 +342,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     // vofa_three(imuData.angle.roll, imuData.angle.pitch, imuData.gyro.gyroY);
 
     // 重新启动DMA接收，继续监听串口数据
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
+    HAL_UARTEx_ReceiveToIdle_IT(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
 
     // 禁止DMA的半传输中断，避免过多的中断回调影响性能
     __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT);
