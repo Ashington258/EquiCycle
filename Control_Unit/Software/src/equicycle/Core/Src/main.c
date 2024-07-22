@@ -21,6 +21,10 @@
 #include "dma.h"
 #include "usart.h"
 #include "gpio.h"
+/***LW***/
+#include "PID.h"
+#include "interrupt.h"
+/***LW***/
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
