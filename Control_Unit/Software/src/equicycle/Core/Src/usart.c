@@ -43,7 +43,7 @@ void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 460800;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -341,7 +341,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     // ANO_Conver_16_16_16((int16_t)(imuData.angle.pitch * 100), (int16_t)(imuData.angle.roll * 100), (int16_t)(imuData.angle.yaw * 100));
 
     // TODO: 根据实际需要调用相关函数处理姿态数据，以下行注释掉的代码是一个例子
-    // vofa_three(imuData.angle.roll, imuData.angle.pitch, imuData.gyro.gyroY);
+    vofa_three(imuData.angle.roll, imuData.angle.pitch, imuData.gyro.gyroY);
 
     // 重新启动DMA接收，继续监听串口数据
     HAL_UARTEx_ReceiveToIdle_IT(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
