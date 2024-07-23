@@ -1,3 +1,13 @@
+/*
+ * @Author: Ashington ashington258@proton.me
+ * @Date: 2024-07-21 21:24:08
+ * @LastEditors: Ashington ashington258@proton.me
+ * @LastEditTime: 2024-07-23 08:11:09
+ * @FilePath: \equicycle\Core\Inc\usart.h
+ * @Description: 请填写简介
+ * 联系方式:921488837@qq.com
+ * Copyright (c) 2024 by ${git_name_email}, All Rights Reserved.
+ */
 /* USER CODE BEGIN Header */
 /**
  ******************************************************************************
@@ -22,35 +32,36 @@
 #define __USART_H__
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
-/* USER CODE BEGIN Includes */
+  /* USER CODE BEGIN Includes */
 
-/* USER CODE END Includes */
+  /* USER CODE END Includes */
 
-extern UART_HandleTypeDef huart1;
+  extern UART_HandleTypeDef huart1;
 
-extern UART_HandleTypeDef huart2;
+  extern UART_HandleTypeDef huart2;
 
-/* USER CODE BEGIN Private defines */
+  /* USER CODE BEGIN Private defines */
 
-/* USER CODE END Private defines */
+  /* USER CODE END Private defines */
 
-void MX_USART1_UART_Init(void);
-void MX_USART2_UART_Init(void);
+  void MX_USART1_UART_Init(void);
+  void MX_USART2_UART_Init(void);
 
-/* USER CODE BEGIN Prototypes */
+  /* USER CODE BEGIN Prototypes */
+  void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
   void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size);
   void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart);
-/* USER CODE END Prototypes */
+  /* USER CODE END Prototypes */
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* __USART_H__ */
-

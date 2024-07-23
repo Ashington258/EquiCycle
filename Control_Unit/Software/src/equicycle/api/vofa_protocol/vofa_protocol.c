@@ -2,7 +2,7 @@
  * @Author: Ashington ashington258@proton.me
  * @Date: 2024-05-28 10:55:37
  * @LastEditors: Ashington ashington258@proton.me
- * @LastEditTime: 2024-07-22 21:58:50
+ * @LastEditTime: 2024-07-23 09:18:57
  * @FilePath: \equicycle\api\vofa_protocol\vofa_protocol.c
  * @Description: 请填写简介
  * 联系方式:921488837@qq.com
@@ -44,11 +44,12 @@ void vofa_one(float A)
     unsigned char byte_stream[8]; // 4 bytes for float + 4 bytes for tail
     create_byte_stream(&A, 1, byte_stream);
     // 这里可以添加处理字节流的代码，例如发送或保存
-    for (int i = 0; i < 8; i++)
-    {
-        printf("%02x ", byte_stream[i]);
-    }
-    printf("\n");
+    HAL_UART_Transmit(&huart1, byte_stream, 16, 10);
+    // for (int i = 0; i < 8; i++)
+    // {
+    //     printf("%02x ", byte_stream[i]);
+    // }
+    // printf("\n");
 }
 
 // 两个浮点数的例子
@@ -72,12 +73,12 @@ void vofa_three(float A, float B, float C)
     unsigned char byte_stream[16]; // 12 bytes for floats + 4 bytes for tail
     create_byte_stream(values, 3, byte_stream);
     // 这里可以添加处理字节流的代码，例如发送或保存
-    HAL_UART_Transmit(&huart1, byte_stream, 16,10);
-    for (int i = 0; i < 16; i++)
-    {
-        printf("%02x ", byte_stream[i]);
-    }
-    printf("\n");
+    HAL_UART_Transmit(&huart1, byte_stream, 16, 10);
+    // for (int i = 0; i < 16; i++)
+    // {
+    //     printf("%02x ", byte_stream[i]);
+    // }
+    // printf("\n");
 }
 
 // 四个浮点数的例子
