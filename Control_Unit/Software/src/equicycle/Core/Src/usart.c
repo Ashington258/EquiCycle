@@ -71,6 +71,7 @@ void MX_USART1_UART_Init(void)
   }
   /* USER CODE BEGIN USART1_Init 2 */
   // 初始化阶段开启串口接收空闲中断
+  // BUG DMA模式下似乎有问题
   HAL_UARTEx_ReceiveToIdle_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
   // HAL_UART_Receive_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
   /* USER CODE END USART1_Init 2 */
@@ -335,11 +336,12 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     // 解析接收到的IMU数据
     parseIMUData(WITIMU_DATA, &imuData);
 
-    // TODO: ANO接口 根据实际需要调用相关函数处理IMU数据，以下行注释掉的代码是一个例子
+    //  ANO接口 根据实际需要调用相关函数处理IMU数据，以下行注释掉的代码是一个例子
     // ANO_Conver_16_16_16((int16_t)(imuData.angle.pitch * 100), (int16_t)(imuData.angle.roll * 100), (int16_t)(imuData.angle.yaw * 100));
 
     // TODO: VOFA接口 根据实际需要调用相关函数处理姿态数据，以下行注释掉的代码是一个例子
-    // vofa_one(imuData.angle.roll);
+    // BUG 数据发送到 VOFA 平台有BUG，数据不正常，该问题在CUBEIDE平台并未发生
+
     vofa_three(imuData.angle.roll, imuData.angle.pitch, imuData.gyro.gyroY);
 
     // 重新启动DMA接收，继续监听串口数据
