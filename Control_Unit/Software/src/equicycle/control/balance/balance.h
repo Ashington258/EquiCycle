@@ -1,14 +1,7 @@
-#ifndef PID_H
-#define PID_H
+#ifndef balance_H
+#define balance_H
 
 #include "main.h"
-
-/*！！！！！！！！！
-该文件不允许外传
-代码是电气前几届学长写的
-lr只是优化一下
-涉及实验室纠纷，尽量避免外传
-！！！！！！！！！*/
 
 #define lr_limit(a,b)   ((a) < -(b) ? -(b) : ((a) > (b) ? (b) : (a)))
 
@@ -31,13 +24,25 @@ typedef struct
 
 } PID_ERECT;
 
-extern PID_ERECT roll_pid;         //PID结构体
+typedef struct
+{
+    // 串级PID
+    float roll_Gyro_output;  // 左右平衡环输出飞轮占空比
+    float roll_Angle_output; // 转向环输出飞轮占空比
+    float roll_Speed_output; // 前后平衡环输出飞轮占空比
+
+} CENTER_STRUCT;
+
+extern CENTER_STRUCT Car;          // 控制中心结构体
+extern PID_ERECT roll_pid;         // PID结构体
 /*****************---------结构体---------*****************/
+
 /*****************---------PID参数---------*****************/
 extern float param_roll_Gyro[4]; 
 extern float param_roll_Angle[4]; 
 extern float param_roll_Speed[4];
 /*****************---------PID参数---------*****************/
+
 /*****************---------函数---------*****************/
 float PID4_roll_gyro( PID_INFO *pid_info , float * PID_Parm , float NowPoint , float SetPoint ,float filter_param);
 float PID4_roll_angle( PID_INFO *pid_info , float * PID_Parm , float NowPoint , float SetPoint ,float filter_param);
