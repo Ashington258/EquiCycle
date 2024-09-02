@@ -48,6 +48,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/api/wit_imu/wit_imu.c
     ${CMAKE_SOURCE_DIR}/api/vofa_protocol/vofa_protocol.c
     ${CMAKE_SOURCE_DIR}/cpp_test/cpptest.cpp # Add the C++ source file
+    ${CMAKE_SOURCE_DIR}/control/balance/balance.c
 )
 
 # Add include paths
@@ -57,6 +58,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/api/wit_imu
     ${CMAKE_SOURCE_DIR}/api/vofa_protocol
     ${CMAKE_SOURCE_DIR}/cpp_test
+    ${CMAKE_SOURCE_DIR}/control/balance
 )
 
 # Add project symbols (macros)

@@ -101,6 +101,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
   // test
   cpp_test_function();
+
+  HAL_TIM_Base_Start_IT(&htim1);
   /* USER CODE END 2 */
 
   /* Infinite loop */

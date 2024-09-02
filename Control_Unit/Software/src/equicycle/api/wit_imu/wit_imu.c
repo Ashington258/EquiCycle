@@ -89,9 +89,8 @@ int parseMagData(unsigned char data[], MagData *magData)
 int parseIMUData(unsigned char data[], IMUData *imuData)
 {
     // if (!parseAccelData(data, &imuData->accel)) return 0;
-    // if (!parseGyroData(data + 11, &imuData->gyro)) return 0;
-    if (!parseAngleData(data + 22, &imuData->angle))
-        return 0;
+    if (!parseGyroData(data + 11, &imuData->gyro)) return 0;
+    if (!parseAngleData(data + 22, &imuData->angle)) return 0;
     // if (!parseMagData(data + 33, &imuData->mag)) return 0;
     return 1;
 }
