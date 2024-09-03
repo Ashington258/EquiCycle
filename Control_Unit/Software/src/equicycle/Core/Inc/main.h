@@ -36,6 +36,7 @@ extern "C" {
 // test
 #include "cpptest.h"
 /***LW***/
+#include "stdio.h"
 #include "balance.h"
 /***LW***/
 
@@ -45,6 +46,7 @@ extern "C" {
 /* USER CODE BEGIN ET */
     extern UART_HandleTypeDef huart1;
     extern UART_HandleTypeDef huart2;
+    extern UART_HandleTypeDef huart3;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/

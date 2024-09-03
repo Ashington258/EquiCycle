@@ -22,8 +22,8 @@
 
 /* USER CODE BEGIN 0 */
 uint8_t WITIMU_DATA[50];
-char uart1_test[50];
-float uart3_date[2];
+char uart1_test[10];
+char uart3_test[10];
 /* USER CODE END 0 */
 
 UART_HandleTypeDef huart1;
@@ -166,7 +166,7 @@ void MX_USART3_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART3_Init 2 */
-  HAL_UART_Receive_IT(&huart3, uart3_date, sizeof(uart3_date));
+  HAL_UART_Receive_IT(&huart3, uart3_test, sizeof(uart3_test));
   /* USER CODE END USART3_Init 2 */
 
 }
@@ -406,14 +406,16 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
  */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
+  if(huart->Instance == USART1)
+  {
+    HAL_UART_Receive_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
+  }
   if(huart->Instance == USART3)
   {
     // 数据检查
-    if( (uart3_date[0] != 0) && (uart3_date[1] != 0) )
+    if( (uart3_test[8] == "\r") && (uart3_test[9] == "\n") )
     {
-      uart3_date[0] = 0;
-      uart3_date[1] = 0;
-      Car.speed_realtime = uart3_date[2];
+      // Car.speed_realtime = uart3_date[2];
     }
     Car.roll_Speed_output = PID4_roll_speed( &roll_pid.roll_speed_pid, param_roll_Speed, Car.speed_realtime, 0, 0.5);
     Car.roll_Speed_output = lr_limit( Car.roll_Speed_output, 20 );
@@ -422,9 +424,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
     // 重新启动接收中断，继续接收数�??
     // 再次�??启接收中�??
-    HAL_UART_Receive_IT(&huart3, (uint8_t *)uart3_date, sizeof(uart3_date));
-    HAL_UART_Receive_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
-
+    HAL_UART_Receive_IT(&huart3, (uint8_t *)uart3_test, sizeof(uart3_test));
+    
  }
 }
 
@@ -444,9 +445,9 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
   {
 
     // 将接收到的数据回传回�??
-    HAL_UART_Transmit_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
+    // HAL_UART_Transmit_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
     // 重新启动DMA接收，继续监听串口数�??
-    HAL_UARTEx_ReceiveToIdle_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
+    // HAL_UARTEx_ReceiveToIdle_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
   }
 
   // �??查回调的UART设备是否为预期的huart2

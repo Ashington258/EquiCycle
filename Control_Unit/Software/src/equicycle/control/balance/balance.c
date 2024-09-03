@@ -8,6 +8,9 @@ float param_roll_Gyro[4]  = {100, 0, 0, 0};
 float param_roll_Angle[4] = {100, 0, 0, 0};
 float param_roll_Speed[4] = {0, 0, 0, 0};
 
+char data[32];  // Buffer to hold the final string
+char data1[] = "r axis0.encoder.vel_estimate";
+
 //-------------------------------------------------------------------------------------------------------------------
 //  @brief      串级PID计算函数
 //  @param      pid_info        PID结构体，误差等值缓存在其中
@@ -110,26 +113,50 @@ void pid_param_init(PID_INFO *pid_info)
 /*****************---------PID参数初始化---------*****************/
 //-------------------------------------------------------------------------------------------------------------------
 //  @brief      odrive发送指令
-//  @note
+//  @note       t为0则是请求编码器速度指令
+//              t不为0则是目标速度值
 //
 //  @author     LateRain
 //  @date       2024/9/3
 //-------------------------------------------------------------------------------------------------------------------
-
-void OdriveCommand_get_velocity(UART_HandleTypeDef *huart)
+void OdriveCommand(UART_HandleTypeDef *huart, float t)
 {
-    char data[] = "  f  0\n";
-    HAL_UART_Transmit_IT(huart, (uint8_t*)data, sizeof(data) - 1);  // sizeof(data) - 1 去除最后的'\0'
-}
+    int integer_part = (int)t;  // Extract the integer part of the float
+    int decimal_part = (int)((t - integer_part) * 100);  // Extract the first two decimal digits
 
-void OdriveCommand_sned_targert(UART_HandleTypeDef *huart , float t)
-{
-    char data[] = "  q 0 t\n";
-    HAL_UART_Transmit_IT(huart, (uint8_t*)data, sizeof(data) - 1);
+    // Manually construct the string "v 0 xx.yy\n"
+    int index = 0;
+    data[index++] = 'v';
+    data[index++] = ' ';
+    data[index++] = '0';
+    data[index++] = ' ';
+
+    // Convert the integer part to string
+    if (integer_part < 10) data[index++] = '0' + integer_part;
+    else
+    {
+        data[index++] = '0' + (integer_part / 10);  // Tens place
+        data[index++] = '0' + (integer_part % 10);  // Units place
+    }
+
+    data[index++] = '.';
+
+    // Convert the decimal part to string
+    data[index++] = '0' + (decimal_part / 10);  // First decimal place
+    data[index++] = '0' + (decimal_part % 10);  // Second decimal place
+
+    data[index++] = '\n';
+    data[index] = '\0';  // Null-terminate the string
+
+    // Transmit the string via UART
+    if(t != 0)
+        HAL_UART_Transmit_IT(huart, (uint8_t*)data, strlen(data));
+    else if(t == 0)
+        HAL_UART_Transmit_IT(huart, (uint8_t*)data1, strlen(data1));
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-//  @brief      TIM1中断回调
+//  @brief      TIM1中断回调5ms
 //  @param      PID_Parm        句柄
 //  @return     output          void
 //  @note       if(htim->Instance == TIM1)判断哪个定时器中断
@@ -163,12 +190,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         if(0 == (itrt_flag % 3))
         {
             itrt_flag = 0;
-            OdriveCommand_get_velocity(&huart1);
-            // Car.roll_Speed_output = PID4_roll_speed( &roll_pid.roll_speed_pid, param_roll_Speed, , , 0.5);
-            // Car.roll_Speed_output = lr_limit( Car.roll_Speed_output, 20 );
+            OdriveCommand(&huart3, 0);
         }
 
-        OdriveCommand_sned_targert(&huart1, Car.roll_Gyro_output);
+        // OdriveCommand_send_target(&huart3, 1.52);
 
 
     }
