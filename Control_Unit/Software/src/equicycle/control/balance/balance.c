@@ -4,7 +4,7 @@ CENTER_STRUCT Car;
 PID_ERECT roll_pid;
 
 // 左右平衡
-float param_roll_Gyro[4] = {100, 0, 0, 0};
+float param_roll_Gyro[4]  = {100, 0, 0, 0};
 float param_roll_Angle[4] = {100, 0, 0, 0};
 float param_roll_Speed[4] = {0, 0, 0, 0};
 
@@ -107,6 +107,27 @@ void pid_param_init(PID_INFO *pid_info)
     pid_info->LastError = 0;
     pid_info->LastData = 0;
 }
+/*****************---------PID参数初始化---------*****************/
+//-------------------------------------------------------------------------------------------------------------------
+//  @brief      odrive发送指令
+//  @note
+//
+//  @author     LateRain
+//  @date       2024/9/3
+//-------------------------------------------------------------------------------------------------------------------
+
+void OdriveCommand_get_velocity(UART_HandleTypeDef *huart)
+{
+    char data[] = "  f  0\n";
+    HAL_UART_Transmit_IT(huart, (uint8_t*)data, sizeof(data) - 1);  // sizeof(data) - 1 去除最后的'\0'
+}
+
+void OdriveCommand_sned_targert(UART_HandleTypeDef *huart , float t)
+{
+    char data[] = "  q 0 t\n";
+    HAL_UART_Transmit_IT(huart, (uint8_t*)data, sizeof(data) - 1);
+}
+
 //-------------------------------------------------------------------------------------------------------------------
 //  @brief      TIM1中断回调
 //  @param      PID_Parm        句柄
@@ -117,7 +138,7 @@ void pid_param_init(PID_INFO *pid_info)
 //  @date       2024/9/2
 //-------------------------------------------------------------------------------------------------------------------
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
+{   
     if(htim->Instance == TIM1)
     {
 
@@ -142,9 +163,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         if(0 == (itrt_flag % 3))
         {
             itrt_flag = 0;
-
+            OdriveCommand_get_velocity(&huart1);
             // Car.roll_Speed_output = PID4_roll_speed( &roll_pid.roll_speed_pid, param_roll_Speed, , , 0.5);
             // Car.roll_Speed_output = lr_limit( Car.roll_Speed_output, 20 );
         }
+
+        OdriveCommand_sned_targert(&huart1, Car.roll_Gyro_output);
+
+
     }
 }

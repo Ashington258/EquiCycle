@@ -31,6 +31,8 @@ typedef struct
     float roll_Angle_output; // 转向环输出飞轮占空比
     float roll_Speed_output; // 前后平衡环输出飞轮占空比
 
+    float speed_realtime;
+
 } CENTER_STRUCT;
 
 extern CENTER_STRUCT Car;          // 控制中心结构体
