@@ -24,6 +24,8 @@
 uint8_t WITIMU_DATA[50];
 char uart1_test[10];
 char uart3_test[10];
+char uart6_test[10];
+char data_o[8];
 /* USER CODE END 0 */
 
 UART_HandleTypeDef huart1;
@@ -72,7 +74,7 @@ void MX_USART1_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART1_Init 2 */
-  // 初始化阶段开启串口接收空闲中�??
+  // 初始化阶段开启串口接收空闲中�??????
   HAL_UARTEx_ReceiveToIdle_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
   // HAL_UART_Receive_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
   /* USER CODE END USART1_Init 2 */
@@ -119,7 +121,7 @@ void MX_USART2_UART_Init(void)
   }
   /* USER CODE BEGIN USART2_Init 2 */
 
-  // �??启串口空闲中断接收不定长数据
+  // �??????启串口空闲中断接收不定长数据
   // HAL_UART_Receive_IT(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
   HAL_UARTEx_ReceiveToIdle_IT(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
   __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT); // 禁止过半填充中断
@@ -207,7 +209,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
     /* USART1 interrupt Init */
-    HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
+    HAL_NVIC_SetPriority(USART1_IRQn, 4, 0);
     HAL_NVIC_EnableIRQ(USART1_IRQn);
   /* USER CODE BEGIN USART1_MspInit 1 */
 
@@ -281,7 +283,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
     __HAL_LINKDMA(uartHandle,hdmatx,hdma_usart2_tx);
 
     /* USART2 interrupt Init */
-    HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
+    HAL_NVIC_SetPriority(USART2_IRQn, 3, 0);
     HAL_NVIC_EnableIRQ(USART2_IRQn);
   /* USER CODE BEGIN USART2_MspInit 1 */
 
@@ -318,7 +320,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
     /* USART3 interrupt Init */
-    HAL_NVIC_SetPriority(USART3_IRQn, 0, 0);
+    HAL_NVIC_SetPriority(USART3_IRQn, 4, 0);
     HAL_NVIC_EnableIRQ(USART3_IRQn);
   /* USER CODE BEGIN USART3_MspInit 1 */
 
@@ -402,7 +404,7 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
  *
  * 该函数仅作为测试 huart1 串口好坏，发送数据给 huart1 回传数据，注意缓冲区大小
  *
- * @param huart 指向UART_HandleTypeDef结构体的指针，包含UART接口的相关信�??
+ * @param huart 指向UART_HandleTypeDef结构体的指针，包含UART接口的相关信�??????
  */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
@@ -410,60 +412,61 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   {
     HAL_UART_Receive_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
   }
+
   if(huart->Instance == USART3)
   {
-    // 数据检查
-    if( (uart3_test[8] == "\r") && (uart3_test[9] == "\n") )
+    // 数据�????�????
+    if( (uart3_test[8] == '\r') && (uart3_test[9] == '\n') )
     {
-      // Car.speed_realtime = uart3_date[2];
+      Odrivedata_handle(uart3_test);
     }
     Car.roll_Speed_output = PID4_roll_speed( &roll_pid.roll_speed_pid, param_roll_Speed, Car.speed_realtime, 0, 0.5);
     Car.roll_Speed_output = lr_limit( Car.roll_Speed_output, 20 );
     // // 发�?�预先定义的测试数据
-    // HAL_UART_Transmit_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
 
-    // 重新启动接收中断，继续接收数�??
-    // 再次�??启接收中�??
+
+    // 重新启动接收中断，继续接收数�??????
+    // 再次�??????启接收中�??????
     HAL_UART_Receive_IT(&huart3, (uint8_t *)uart3_test, sizeof(uart3_test));
-    
- }
+  }
+
 }
 
 /**
- * @brief UART扩展接收事件回调函数，用于接收来 huart2 的数�??
+ * @brief UART扩展接收事件回调函数，用于接收来 huart2 的数�??????
  *
- * 该函数在UART接收缓冲区填满特定长度数据时被调用�?�具体用途是处理接收到的IMU数据�??
+ * 该函数在UART接收缓冲区填满特定长度数据时被调用�?�具体用途是处理接收到的IMU数据�??????
  * 并重新启动DMA接收以继续监听串口数据�??
  *
- * @param huart 指向UART_HandleTypeDef结构体的指针，用于标识哪个UART设备触发了回�??
+ * @param huart 指向UART_HandleTypeDef结构体的指针，用于标识哪个UART设备触发了回�??????
  * @param Size 接收到的数据长度，单位为字节
  */
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
 
-  if (huart == &huart1) // 该语句用于测�?? huart1 串口，为后续vofa调参平台提供接口
+  if (huart == &huart1) // 该语句用于测�?????? huart1 串口，为后续vofa调参平台提供接口
   {
 
-    // 将接收到的数据回传回�??
+    // 将接收到的数据回传回�??????
     // HAL_UART_Transmit_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
-    // 重新启动DMA接收，继续监听串口数�??
+    // 重新启动DMA接收，继续监听串口数�??????
     // HAL_UARTEx_ReceiveToIdle_IT(&huart1, (uint8_t *)uart1_test, sizeof(uart1_test));
   }
 
-  // �??查回调的UART设备是否为预期的huart2
+  // �??????查回调的UART设备是否为预期的huart2
   if (huart == &huart2)
   {
     // 解析接收到的IMU数据
     parseIMUData(WITIMU_DATA, &imuData);
 
-    // TODO: ANO接口 根据实际�??要调用相关函数处理IMU数据，以下行注释掉的代码是一个例�??
+    // TODO: ANO接口 根据实际�??????要调用相关函数处理IMU数据，以下行注释掉的代码是一个例�??????
     // ANO_Conver_16_16_16((int16_t)(imuData.angle.pitch * 100), (int16_t)(imuData.angle.roll * 100), (int16_t)(imuData.angle.yaw * 100));
 
-    // TODO: VOFA接口 根据实际�??要调用相关函数处理姿态数据，以下行注释掉的代码是�??个例�??
+    // TODO: VOFA接口 根据实际�??????要调用相关函数处理姿态数据，以下行注释掉的代码是�??????个例�??????
     // vofa_one(imuData.angle.roll);
     vofa_three(imuData.angle.roll, imuData.angle.pitch, imuData.gyro.gyroY);
 
-    // 重新启动DMA接收，继续监听串口数�??
+    // 重新启动DMA接收，继续监听串口数�??????
     HAL_UARTEx_ReceiveToIdle_IT(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
 
     // 禁止DMA的半传输中断，避免过多的中断回调影响性能
@@ -474,5 +477,38 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
   HAL_UARTEx_ReceiveToIdle_DMA(&huart2, WITIMU_DATA, sizeof(WITIMU_DATA));
+
+  if(huart->Instance == USART3)
+  {
+      // Check for Parity Error (PE)
+    if (__HAL_UART_GET_FLAG(&huart3, UART_FLAG_PE))
+    {
+        __HAL_UART_CLEAR_PEFLAG(&huart3);
+    }
+
+    // Check for Overrun Error (ORE)
+    if (__HAL_UART_GET_FLAG(&huart3, UART_FLAG_ORE))
+    {
+        __HAL_UART_CLEAR_OREFLAG(&huart3);
+    }
+
+    // Check for Framing Error (FE)
+    if (__HAL_UART_GET_FLAG(&huart3, UART_FLAG_FE))
+    {
+        __HAL_UART_CLEAR_FEFLAG(&huart3);
+    }
+
+    // Check if data is received (RXNE)
+    if (__HAL_UART_GET_IT_SOURCE(&huart3, UART_IT_RXNE))
+    {
+        // Read the received data
+        uint8_t data = (uint8_t)(huart3.Instance->RDR & 0xFF);
+        
+        // (Optional) You can store or process the data here
+    }
+
+    HAL_UART_Receive_IT(&huart3, (uint8_t *)uart3_test, sizeof(uart3_test));
+  }
+
 }
 /* USER CODE END 1 */

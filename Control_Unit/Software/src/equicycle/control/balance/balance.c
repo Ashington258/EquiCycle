@@ -4,12 +4,17 @@ CENTER_STRUCT Car;
 PID_ERECT roll_pid;
 
 // 左右平衡
-float param_roll_Gyro[4]  = {100, 0, 0, 0};
-float param_roll_Angle[4] = {100, 0, 0, 0};
-float param_roll_Speed[4] = {0, 0, 0, 0};
+float param_roll_Gyro[4]  = {-20,   0,  0,     0};
+float param_roll_Angle[4] = {-1,    0,     0,     0};
+float param_roll_Speed[4] = {0,    0,     0,    0};
 
-char data[32];  // Buffer to hold the final string
-char data1[] = "r axis0.encoder.vel_estimate";
+float offset_roll = 0;
+
+char data[33];  // Buffer to hold the final string
+char data1[] = "r axis0.encoder.vel_estimate\n";
+int flag_p;
+
+uint8_t itrt_flag = 0;
 
 //-------------------------------------------------------------------------------------------------------------------
 //  @brief      串级PID计算函数
@@ -121,6 +126,11 @@ void pid_param_init(PID_INFO *pid_info)
 //-------------------------------------------------------------------------------------------------------------------
 void OdriveCommand(UART_HandleTypeDef *huart, float t)
 {
+    if(t < 0)
+    {
+        t = -t;
+        flag_p = 1;
+    }
     int integer_part = (int)t;  // Extract the integer part of the float
     int decimal_part = (int)((t - integer_part) * 100);  // Extract the first two decimal digits
 
@@ -130,6 +140,8 @@ void OdriveCommand(UART_HandleTypeDef *huart, float t)
     data[index++] = ' ';
     data[index++] = '0';
     data[index++] = ' ';
+    if(flag_p)
+        data[index++] = '-';
 
     // Convert the integer part to string
     if (integer_part < 10) data[index++] = '0' + integer_part;
@@ -147,14 +159,29 @@ void OdriveCommand(UART_HandleTypeDef *huart, float t)
 
     data[index++] = '\n';
     data[index] = '\0';  // Null-terminate the string
-
+  
     // Transmit the string via UART
-    if(t != 0)
-        HAL_UART_Transmit_IT(huart, (uint8_t*)data, strlen(data));
-    else if(t == 0)
+    if(t == 666)
         HAL_UART_Transmit_IT(huart, (uint8_t*)data1, strlen(data1));
+    else
+        HAL_UART_Transmit_IT(huart, (uint8_t*)data, strlen(data));
+
+    flag_p = 0;
 }
 
+void Odrivedata_handle(char *received_data) 
+{
+    // Step 1: Trim the \r\n at the end
+    char *pos = strstr(received_data, "\r\n");
+    if (pos != NULL) {
+        *pos = '\0';  // Replace \r with \0
+    }
+
+    // Step 2: Convert the string to a float
+    Car.speed_realtime = atof(received_data);
+
+    // Now 'number' holds the float value for further calculations
+}
 //-------------------------------------------------------------------------------------------------------------------
 //  @brief      TIM1中断回调5ms
 //  @param      PID_Parm        句柄
@@ -168,32 +195,30 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {   
     if(htim->Instance == TIM1)
     {
-
-        static uint8_t itrt_flag = 0;
         itrt_flag++;
 
         // 5ms角速度环
         if (-20 < imuData.angle.roll && imuData.angle.roll < 20)
         {
-            Car.roll_Gyro_output = PID4_roll_gyro(&roll_pid.roll_gyro_pid, param_roll_Gyro, imuData.gyro.gyroX, 0, 0.5);
-            Car.roll_Gyro_output = lr_limit(Car.roll_Gyro_output, 10000);
+            Car.roll_Gyro_output = PID4_roll_gyro(&roll_pid.roll_gyro_pid, param_roll_Gyro, imuData.gyro.gyroX, Car.roll_Angle_output, 0.5);
+            Car.roll_Gyro_output = lr_limit(Car.roll_Gyro_output, 40);
         }
         else // 倒地保护
             Car.roll_Gyro_output = 0;
         // 10ms角度环
         if(0 == (itrt_flag % 2))
         {
-            Car.roll_Angle_output = PID4_roll_angle(&roll_pid.roll_angle_pid, param_roll_Angle, imuData.angle.roll, 0, 0.5);
-            Car.roll_Angle_output = lr_limit(Car.roll_Angle_output, 500);
+            Car.roll_Angle_output = PID4_roll_angle(&roll_pid.roll_angle_pid, param_roll_Angle, imuData.angle.roll + Car.dynamic_roll, offset_roll, 0.5);
+            Car.roll_Angle_output = lr_limit(Car.roll_Angle_output, 10);
         }
         // 15ms速度环
         if(0 == (itrt_flag % 3))
         {
             itrt_flag = 0;
-            OdriveCommand(&huart3, 0);
+            // OdriveCommand(&huart3, 666);
         }
 
-        // OdriveCommand_send_target(&huart3, 1.52);
+        OdriveCommand(&huart3, Car.roll_Gyro_output);
 
 
     }

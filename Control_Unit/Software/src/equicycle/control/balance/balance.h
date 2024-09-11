@@ -31,6 +31,8 @@ typedef struct
     float roll_Angle_output; // 转向环输出飞轮占空比
     float roll_Speed_output; // 前后平衡环输出飞轮占空比
 
+    float dynamic_roll;
+
     float speed_realtime;
 
 } CENTER_STRUCT;
@@ -49,5 +51,6 @@ extern float param_roll_Speed[4];
 float PID4_roll_gyro( PID_INFO *pid_info , float * PID_Parm , float NowPoint , float SetPoint ,float filter_param);
 float PID4_roll_angle( PID_INFO *pid_info , float * PID_Parm , float NowPoint , float SetPoint ,float filter_param);
 float PID4_roll_speed( PID_INFO *pid_info , float * PID_Parm , float NowPoint , float SetPoint ,float filter_param);
+void Odrivedata_handle(char *received_data);
 /*****************---------函数---------*****************/
 #endif
