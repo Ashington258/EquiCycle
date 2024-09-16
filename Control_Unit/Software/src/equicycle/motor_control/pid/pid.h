@@ -1,9 +1,10 @@
-#ifndef balance_H
-#define balance_H
+#ifndef PID_H
+#define PID_H
 
 #include "main.h"
 
 #define lr_limit(a,b)   ((a) < -(b) ? -(b) : ((a) > (b) ? (b) : (a)))
+#define lr_limit_ab(x, a, b) ((x) < (a) ? (a) : ((x) > (b) ? (b) : (x)))
 
 /*****************---------结构体---------*****************/
 typedef struct
@@ -37,7 +38,7 @@ typedef struct
 
 } CENTER_STRUCT;
 
-extern CENTER_STRUCT Car;          // 控制中心结构体
+extern CENTER_STRUCT motor_contl;          // 控制中心结构体
 extern PID_ERECT roll_pid;         // PID结构体
 /*****************---------结构体---------*****************/
 
@@ -45,12 +46,13 @@ extern PID_ERECT roll_pid;         // PID结构体
 extern float param_roll_Gyro[4]; 
 extern float param_roll_Angle[4]; 
 extern float param_roll_Speed[4];
+extern uint8_t itrt_flag;
+extern float offset_roll;//改大往左倒
 /*****************---------PID参数---------*****************/
 
 /*****************---------函数---------*****************/
 float PID4_roll_gyro( PID_INFO *pid_info , float * PID_Parm , float NowPoint , float SetPoint ,float filter_param);
 float PID4_roll_angle( PID_INFO *pid_info , float * PID_Parm , float NowPoint , float SetPoint ,float filter_param);
 float PID4_roll_speed( PID_INFO *pid_info , float * PID_Parm , float NowPoint , float SetPoint ,float filter_param);
-void Odrivedata_handle(char *received_data);
 /*****************---------函数---------*****************/
 #endif

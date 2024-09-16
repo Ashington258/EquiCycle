@@ -35,11 +35,13 @@ extern "C" {
 #include "wit_imu.h"
 // test
 #include "cpptest.h"
-/***LW***/
+/******control******/
 #include "stdio.h"
 #include "stdlib.h"
-#include "balance.h"
-/***LW***/
+#include "pid.h"
+#include "odrive.h"
+#include "steer.h"
+/******control******/
 
 /* USER CODE END Includes */
 

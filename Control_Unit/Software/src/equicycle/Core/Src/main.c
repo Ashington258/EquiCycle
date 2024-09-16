@@ -104,6 +104,9 @@ int main(void)
   cpp_test_function();
 
   HAL_TIM_Base_Start_IT(&htim1);
+
+  HAL_TIM_PWM_Start(&htim1,TIM_CHANNEL_1);
+  steer_contorl(0);
   /* USER CODE END 2 */
 
   /* Infinite loop */

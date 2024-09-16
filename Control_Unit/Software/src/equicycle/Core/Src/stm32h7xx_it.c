@@ -62,7 +62,7 @@ extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 extern UART_HandleTypeDef huart3;
 /* USER CODE BEGIN EV */
-
+extern char uart3_test[30];
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -288,7 +288,7 @@ void USART3_IRQHandler(void)
   /* USER CODE END USART3_IRQn 0 */
   HAL_UART_IRQHandler(&huart3);
   /* USER CODE BEGIN USART3_IRQn 1 */
-
+// HAL_UARTEx_ReceiveToIdle_DMA(&huart3, uart3_test, sizeof(uart3_test));
   /* USER CODE END USART3_IRQn 1 */
 }
 
