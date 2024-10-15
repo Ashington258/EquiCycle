@@ -120,10 +120,12 @@ while cap.isOpened():
                     ransac.fit(X, y)
 
                     # 获取拟合直线的两个端点
-                    line_start = int(X.min()), int(
-                        ransac.predict(X.min().reshape(1, -1))
+                    line_start = int(X.min().item()), int(
+                        ransac.predict(X.min().reshape(1, -1)).item()
                     )
-                    line_end = int(X.max()), int(ransac.predict(X.max().reshape(1, -1)))
+                    line_end = int(X.max().item()), int(
+                        ransac.predict(X.max().reshape(1, -1)).item()
+                    )
 
                     # 在原始图像上绘制拟合的直线
                     cv2.line(frame, line_start, line_end, (0, 0, 255), 2)
