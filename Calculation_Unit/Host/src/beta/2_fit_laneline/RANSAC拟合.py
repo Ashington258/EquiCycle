@@ -3,6 +3,7 @@ import time
 import numpy as np
 from ultralytics import YOLO
 from skimage.morphology import skeletonize
+from sklearn.linear_model import RANSACRegressor
 import torch
 
 
@@ -17,8 +18,8 @@ class Config:
     )
     CONF_THRESH = 0.25
     IMG_SIZE = 1280
-    ROI_TOP_LEFT_RATIO = (0, 0.25)
-    ROI_BOTTOM_RIGHT_RATIO = (1, 0.75)
+    ROI_TOP_LEFT_RATIO = (0, 0.35)
+    ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
 
 
 class YOLOProcessor:
@@ -68,8 +69,7 @@ class ImageProcessor:
 
         # 限制处理区域到 ROI
         mask_roi = mask[
-            roi_top_left[1] : roi_bottom_right[1],
-            roi_top_left[0] : roi_bottom_right[0],
+            roi_top_left[1] : roi_bottom_right[1], roi_top_left[0] : roi_bottom_right[0]
         ]
 
         # 形态学处理以平滑掩码
@@ -88,6 +88,29 @@ class ImageProcessor:
             points[:, 1] += roi_top_left[0]
             return points
         return np.array([])
+
+    def fit_lane_with_ransac(self, points, frame):
+        """使用RANSAC拟合平滑车道线"""
+        if len(points) > 0:
+            # 拆分为 x 和 y 坐标
+            X = points[:, 1].reshape(-1, 1)  # x 坐标
+            y = points[:, 0]  # y 坐标
+
+            # 使用 RANSAC 进行拟合
+            ransac = RANSACRegressor()
+            ransac.fit(X, y)
+            line_x = np.linspace(X.min(), X.max(), 100).reshape(-1, 1)
+            line_y = ransac.predict(line_x).astype(int)
+
+            # 绘制平滑车道线
+            for i in range(1, len(line_x)):
+                cv2.line(
+                    frame,
+                    (int(line_x[i - 1]), line_y[i - 1]),
+                    (int(line_x[i]), line_y[i]),
+                    (0, 255, 255),
+                    2,
+                )
 
 
 class VideoProcessor:
@@ -125,16 +148,12 @@ def main():
 
     # 初始化各个处理器
     yolo_processor = YOLOProcessor(
-        model_path=config.MODEL_PATH,
-        conf_thresh=config.CONF_THRESH,
-        img_size=config.IMG_SIZE,
-        device=device,
+        config.MODEL_PATH, config.CONF_THRESH, config.IMG_SIZE, device
     )
     image_processor = ImageProcessor(
-        roi_top_left_ratio=config.ROI_TOP_LEFT_RATIO,
-        roi_bottom_right_ratio=config.ROI_BOTTOM_RIGHT_RATIO,
+        config.ROI_TOP_LEFT_RATIO, config.ROI_BOTTOM_RIGHT_RATIO
     )
-    video_processor = VideoProcessor(video_path=config.VIDEO_PATH)
+    video_processor = VideoProcessor(config.VIDEO_PATH)
 
     # 初始化计时器
     prev_time = time.time()
@@ -167,10 +186,9 @@ def main():
         # 定义ROI
         frame_height, frame_width = frame.shape[:2]
         roi = image_processor.define_roi(frame_width, frame_height)
-        roi_top_left, roi_bottom_right = roi
 
         # 绘制ROI矩形
-        cv2.rectangle(frame, roi_top_left, roi_bottom_right, (0, 255, 0), 2)
+        cv2.rectangle(frame, roi[0], roi[1], (0, 255, 0), 2)
 
         # 处理掩码
         if results[0].masks is not None:
@@ -181,26 +199,11 @@ def main():
                     mask, frame_height, frame_width, roi
                 )
                 if points.size > 0:
-                    # 绘制骨架点
-                    frame[points[:, 0], points[:, 1]] = [0, 0, 255]  # 红色表示骨架点
-
-        # 绘制分割结果
-        annotated_frame = results[0].plot()
-
-        # 调整annotated_frame尺寸
-        annotated_height, annotated_width = annotated_frame.shape[:2]
-        if (annotated_height, annotated_width) != (frame_height, frame_width):
-            annotated_frame = cv2.resize(
-                annotated_frame,
-                (frame_width, frame_height),
-                interpolation=cv2.INTER_LINEAR,
-            )
-
-        # 叠加分割结果
-        combined_frame = cv2.addWeighted(frame, 0.7, annotated_frame, 0.3, 0)
+                    # 使用RANSAC拟合并绘制平滑车道线
+                    image_processor.fit_lane_with_ransac(points, frame)
 
         # 显示结果
-        cv2.imshow("YOLOv8 Instance Segmentation with Centerline", combined_frame)
+        cv2.imshow("YOLOv8 Instance Segmentation with Centerline", frame)
 
         # 按下 'q' 键退出
         if cv2.waitKey(1) & 0xFF == ord("q"):

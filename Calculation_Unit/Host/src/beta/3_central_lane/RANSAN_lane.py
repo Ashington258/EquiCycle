@@ -5,6 +5,7 @@ from ultralytics import YOLO
 from skimage.morphology import skeletonize
 import torch
 from sklearn.linear_model import RANSACRegressor
+from scipy.interpolate import interp1d
 
 # 参数列表
 params = {
@@ -40,6 +41,23 @@ prev_time = time.time()
 # 定义形态学核，避免在循环中重复创建
 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
 
+
+# 函数：对车道线进行插值，使其具有相同数量的点
+def interpolate_line(line, num_points=100):
+    """对车道线进行插值，使其有固定数量的点"""
+    x = line[:, 0]
+    y = line[:, 1]
+
+    # 创建等间距的 x 采样点
+    x_new = np.linspace(x.min(), x.max(), num_points)
+
+    # 使用线性插值生成对应的 y 值
+    interp_func = interp1d(x, y, kind="linear", fill_value="extrapolate")
+    y_new = interp_func(x_new)
+
+    return np.column_stack((x_new, y_new))
+
+
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
@@ -74,6 +92,7 @@ while cap.isOpened():
     cv2.rectangle(frame, roi_top_left, roi_bottom_right, (0, 255, 0), 2)
 
     # 获取分割后的掩码（确保存在检测结果）
+    lane_lines = []  # 存储每条车道线的拟合点
     if results[0].masks is not None:
         # 获取所有掩码并转换为CPU上的numpy数组
         masks = results[0].masks.data.cpu().numpy().astype(np.uint8) * 255
@@ -83,7 +102,6 @@ while cap.isOpened():
             # 确认掩码尺寸与帧一致
             mask_height, mask_width = mask.shape[:2]
             if (mask_height, mask_width) != (frame_height, frame_width):
-                # 如果掩码尺寸不一致，按比例缩放
                 scale_y = frame_height / mask_height
                 scale_x = frame_width / mask_width
                 mask = cv2.resize(
@@ -119,16 +137,43 @@ while cap.isOpened():
                     ransac = RANSACRegressor()
                     ransac.fit(X, y)
 
-                    # 获取拟合直线的两个端点
-                    line_start = int(X.min().item()), int(
-                        ransac.predict(X.min().reshape(1, -1)).item()
-                    )
-                    line_end = int(X.max().item()), int(
-                        ransac.predict(X.max().reshape(1, -1)).item()
-                    )
+                    # 获取拟合直线的点并存储到 lane_lines 中
+                    y_pred = ransac.predict(X).astype(int)
+                    lane_line = np.column_stack((X.ravel(), y_pred))
+                    lane_lines.append(lane_line)
 
-                    # 在原始图像上绘制拟合的直线
-                    cv2.line(frame, line_start, line_end, (0, 0, 255), 2)
+                    # 绘制拟合的车道线
+                    for i in range(len(lane_line) - 1):
+                        cv2.line(
+                            frame,
+                            tuple(lane_line[i]),
+                            tuple(lane_line[i + 1]),
+                            (0, 0, 255),
+                            2,
+                        )
+
+    # 计算中心线
+    if len(lane_lines) > 1:
+        for i in range(len(lane_lines) - 1):
+            line1 = lane_lines[i]
+            line2 = lane_lines[i + 1]
+
+            # 对两条车道线插值，使它们具有相同数量的点
+            line1_interp = interpolate_line(line1)
+            line2_interp = interpolate_line(line2)
+
+            # 计算相同x坐标的中点
+            center_line = np.mean([line1_interp, line2_interp], axis=0).astype(int)
+
+            # 绘制中心线
+            for j in range(len(center_line) - 1):
+                cv2.line(
+                    frame,
+                    tuple(center_line[j]),
+                    tuple(center_line[j + 1]),
+                    (255, 0, 0),
+                    2,
+                )
 
     # 绘制分割和中心线
     annotated_frame = results[0].plot()  # 结果绘制在图像上
