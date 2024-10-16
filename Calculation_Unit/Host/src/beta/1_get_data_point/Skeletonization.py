@@ -15,6 +15,8 @@ class Config:
     VIDEO_PATH = (
         "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/video.mp4"
     )
+    INPUT_SOURCE = "camera"  # 可以是 'video' 或 'camera'
+    CAMERA_ID = 0  # 摄像头ID，通常是0或1
     CONF_THRESH = 0.25
     IMG_SIZE = 1280
     ROI_TOP_LEFT_RATIO = (0, 0.35)
@@ -93,10 +95,17 @@ class ImageProcessor:
 class VideoProcessor:
     """视频处理类"""
 
-    def __init__(self, video_path):
-        self.cap = cv2.VideoCapture(video_path)
-        if not self.cap.isOpened():
-            raise ValueError(f"无法打开视频文件: {video_path}")
+    def __init__(self, config):
+        if config.INPUT_SOURCE == "video":
+            self.cap = cv2.VideoCapture(config.VIDEO_PATH)
+            if not self.cap.isOpened():
+                raise ValueError(f"无法打开视频文件: {config.VIDEO_PATH}")
+        elif config.INPUT_SOURCE == "camera":
+            self.cap = cv2.VideoCapture(config.CAMERA_ID)
+            if not self.cap.isOpened():
+                raise ValueError(f"无法打开摄像头: {config.CAMERA_ID}")
+        else:
+            raise ValueError("未知的输入源类型")
 
         self.fps_original = self.cap.get(cv2.CAP_PROP_FPS)
         print(f"原始视频帧率: {self.fps_original}")
@@ -134,7 +143,7 @@ def main():
         roi_top_left_ratio=config.ROI_TOP_LEFT_RATIO,
         roi_bottom_right_ratio=config.ROI_BOTTOM_RIGHT_RATIO,
     )
-    video_processor = VideoProcessor(video_path=config.VIDEO_PATH)
+    video_processor = VideoProcessor(config=config)
 
     # 初始化计时器
     prev_time = time.time()
