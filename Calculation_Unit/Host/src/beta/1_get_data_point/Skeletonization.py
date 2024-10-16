@@ -4,6 +4,8 @@ import numpy as np
 from ultralytics import YOLO
 from skimage.morphology import skeletonize
 import torch
+import requests
+import threading
 
 
 class Config:
@@ -12,11 +14,9 @@ class Config:
     MODEL_PATH = (
         "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/model/best.pt"
     )
-    VIDEO_PATH = (
-        "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/video.mp4"
+    INPUT_SOURCE = (
+        "http://192.168.2.225:5000/video_feed"  # 可以是视频路径、摄像头ID或URL
     )
-    INPUT_SOURCE = "camera"  # 可以是 'video' 或 'camera'
-    CAMERA_ID = 0  # 摄像头ID，通常是0或1
     CONF_THRESH = 0.25
     IMG_SIZE = 1280
     ROI_TOP_LEFT_RATIO = (0, 0.35)
@@ -61,54 +61,94 @@ class ImageProcessor:
         """处理掩码，应用形态学操作和骨架提取"""
         roi_top_left, roi_bottom_right = roi
 
-        # 调整掩码尺寸
         mask_height, mask_width = mask.shape[:2]
         if (mask_height, mask_width) != (frame_height, frame_width):
             mask = cv2.resize(
                 mask, (frame_width, frame_height), interpolation=cv2.INTER_NEAREST
             )
 
-        # 限制处理区域到 ROI
         mask_roi = mask[
-            roi_top_left[1] : roi_bottom_right[1],
-            roi_top_left[0] : roi_bottom_right[0],
+            roi_top_left[1] : roi_bottom_right[1], roi_top_left[0] : roi_bottom_right[0]
         ]
 
-        # 形态学处理以平滑掩码
         mask_roi = cv2.morphologyEx(mask_roi, cv2.MORPH_OPEN, self.kernel)
         mask_roi = cv2.morphologyEx(mask_roi, cv2.MORPH_CLOSE, self.kernel)
 
-        # 骨架化处理
         skeleton = skeletonize(mask_roi > 0).astype(np.uint8)
-
-        # 提取骨架点坐标
         points = np.column_stack(np.where(skeleton > 0))
 
         if points.size > 0:
-            # 调整点的坐标到原始图像
             points[:, 0] += roi_top_left[1]
             points[:, 1] += roi_top_left[0]
             return points
         return np.array([])
 
 
-class VideoProcessor:
-    """视频处理类"""
+class VideoStream:
+    """网络视频流处理类"""
 
-    def __init__(self, config):
-        if config.INPUT_SOURCE == "video":
-            self.cap = cv2.VideoCapture(config.VIDEO_PATH)
+    def __init__(self, url):
+        self.url = url
+        self.bytes_data = b""
+        self.frame = None
+        self.running = True
+        self.thread = threading.Thread(target=self.read_stream, daemon=True)
+        self.thread.start()
+
+    def read_stream(self):
+        response = requests.get(self.url, stream=True)
+        if response.status_code != 200:
+            print("无法连接到视频流")
+            self.running = False
+            return
+
+        for chunk in response.iter_content(chunk_size=4096):
+            self.bytes_data += chunk
+            a = self.bytes_data.find(b"\xff\xd8")
+            b = self.bytes_data.find(b"\xff\xd9")
+            if a != -1 and b != -1:
+                jpg = self.bytes_data[a : b + 2]
+                self.bytes_data = self.bytes_data[b + 2 :]
+                self.frame = cv2.imdecode(
+                    np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR
+                )
+
+    def get_frame(self):
+        return self.frame
+
+    def stop(self):
+        self.running = False
+
+    def is_running(self):
+        return self.running
+
+
+class VideoProcessor:
+    """视频处理类，支持本地视频、摄像头或网络流"""
+
+    def __init__(self, input_source):
+        if isinstance(input_source, str):
+            if input_source.startswith("http://") or input_source.startswith(
+                "https://"
+            ):
+                self.stream = VideoStream(input_source)
+                self.cap = None
+            else:
+                self.cap = cv2.VideoCapture(input_source)
+                if not self.cap.isOpened():
+                    raise ValueError(f"无法打开视频文件: {input_source}")
+                self.stream = None
+        elif isinstance(input_source, int):
+            self.cap = cv2.VideoCapture(input_source)
             if not self.cap.isOpened():
-                raise ValueError(f"无法打开视频文件: {config.VIDEO_PATH}")
-        elif config.INPUT_SOURCE == "camera":
-            self.cap = cv2.VideoCapture(config.CAMERA_ID)
-            if not self.cap.isOpened():
-                raise ValueError(f"无法打开摄像头: {config.CAMERA_ID}")
+                raise ValueError(f"无法打开摄像头: {input_source}")
+            self.stream = None
         else:
             raise ValueError("未知的输入源类型")
 
-        self.fps_original = self.cap.get(cv2.CAP_PROP_FPS)
-        print(f"原始视频帧率: {self.fps_original}")
+        if self.cap is not None:
+            self.fps_original = self.cap.get(cv2.CAP_PROP_FPS)
+            print(f"原始视频帧率: {self.fps_original}")
 
         cv2.namedWindow(
             "YOLOv8 Instance Segmentation with Centerline", cv2.WINDOW_NORMAL
@@ -116,12 +156,21 @@ class VideoProcessor:
 
     def read_frame(self):
         """读取下一帧"""
-        ret, frame = self.cap.read()
-        return ret, frame
+        if self.cap:
+            ret, frame = self.cap.read()
+            return ret, frame
+        elif self.stream:
+            frame = self.stream.get_frame()
+            if frame is not None:
+                return True, frame
+        return False, None
 
     def release(self):
-        """释放视频资源"""
-        self.cap.release()
+        """释放资源"""
+        if self.cap:
+            self.cap.release()
+        if self.stream:
+            self.stream.stop()
         cv2.destroyAllWindows()
 
 
@@ -132,18 +181,14 @@ def main():
     # 确定设备
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # 初始化各个处理器
+    # 初始化处理器
     yolo_processor = YOLOProcessor(
-        model_path=config.MODEL_PATH,
-        conf_thresh=config.CONF_THRESH,
-        img_size=config.IMG_SIZE,
-        device=device,
+        config.MODEL_PATH, config.CONF_THRESH, config.IMG_SIZE, device
     )
     image_processor = ImageProcessor(
-        roi_top_left_ratio=config.ROI_TOP_LEFT_RATIO,
-        roi_bottom_right_ratio=config.ROI_BOTTOM_RIGHT_RATIO,
+        config.ROI_TOP_LEFT_RATIO, config.ROI_BOTTOM_RIGHT_RATIO
     )
-    video_processor = VideoProcessor(config=config)
+    video_processor = VideoProcessor(config.INPUT_SOURCE)
 
     # 初始化计时器
     prev_time = time.time()
@@ -162,7 +207,7 @@ def main():
         fps = 1 / elapsed_time if elapsed_time > 0 else 0
         prev_time = current_time
 
-        # 在图像上显示FPS
+        # 显示FPS
         cv2.putText(
             frame,
             f"FPS: {fps:.2f}",
@@ -176,10 +221,6 @@ def main():
         # 定义ROI
         frame_height, frame_width = frame.shape[:2]
         roi = image_processor.define_roi(frame_width, frame_height)
-        roi_top_left, roi_bottom_right = roi
-
-        # 绘制ROI矩形
-        cv2.rectangle(frame, roi_top_left, roi_bottom_right, (0, 255, 0), 2)
 
         # 处理掩码
         if results[0].masks is not None:
@@ -190,28 +231,12 @@ def main():
                     mask, frame_height, frame_width, roi
                 )
                 if points.size > 0:
-                    # 绘制骨架点
-                    frame[points[:, 0], points[:, 1]] = [0, 0, 255]  # 红色表示骨架点
-
-        # 绘制分割结果
-        annotated_frame = results[0].plot()
-
-        # 调整annotated_frame尺寸
-        annotated_height, annotated_width = annotated_frame.shape[:2]
-        if (annotated_height, annotated_width) != (frame_height, frame_width):
-            annotated_frame = cv2.resize(
-                annotated_frame,
-                (frame_width, frame_height),
-                interpolation=cv2.INTER_LINEAR,
-            )
-
-        # 叠加分割结果
-        combined_frame = cv2.addWeighted(frame, 0.7, annotated_frame, 0.3, 0)
+                    frame[points[:, 0], points[:, 1]] = [0, 0, 255]
 
         # 显示结果
-        cv2.imshow("YOLOv8 Instance Segmentation with Centerline", combined_frame)
+        cv2.imshow("YOLOv8 Instance Segmentation with Centerline", frame)
 
-        # 按下 'q' 键退出
+        # 按 'q' 键退出
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
