@@ -15,11 +15,25 @@ class Config:
     MODEL_PATH = (
         "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/model/best.pt"
     )
-    VIDEO_SOURCE = "http://192.168.2.225:5000/video_feed"  # 默认摄像头输入,该项输入路径则读取video，输入url则从局域网拉流
+    # 模型文件路径
+
+    VIDEO_SOURCE = "http://192.168.2.225:5000/video_feed"
+    # 视频源配置：
+    # - 摄像头输入: 0, 1, 2...
+    # - 视频文件路径: "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/video.mp4"
+    # - 网络视频流: "http://192.168.2.225:5000/video_feed"
+
     CONF_THRESH = 0.25
+    # 置信度阈值
+
     IMG_SIZE = 1280
+    # 图像尺寸
+
     ROI_TOP_LEFT_RATIO = (0, 0.35)
+    # 感兴趣区域左上角比例
+
     ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
+    # 感兴趣区域右下角比例
 
 
 class YOLOProcessor:
