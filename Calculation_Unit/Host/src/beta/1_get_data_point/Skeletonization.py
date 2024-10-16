@@ -14,9 +14,7 @@ class Config:
     MODEL_PATH = (
         "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/model/best.pt"
     )
-    INPUT_SOURCE = (
-        "http://192.168.2.225:5000/video_feed"  # 可以是视频路径、摄像头ID或URL
-    )
+    INPUT_SOURCE = "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/video.mp4"  # 可以是视频路径、摄像头ID或URL
     CONF_THRESH = 0.25
     IMG_SIZE = 1280
     ROI_TOP_LEFT_RATIO = (0, 0.35)
@@ -220,7 +218,14 @@ def main():
 
         # 定义ROI
         frame_height, frame_width = frame.shape[:2]
-        roi = image_processor.define_roi(frame_width, frame_height)
+        roi_top_left, roi_bottom_right = image_processor.define_roi(
+            frame_width, frame_height
+        )
+
+        # 绘制ROI矩形
+        cv2.rectangle(
+            frame, roi_top_left, roi_bottom_right, (0, 255, 0), 2
+        )  # 绿色矩形，线条粗细为2
 
         # 处理掩码
         if results[0].masks is not None:
@@ -228,7 +233,7 @@ def main():
 
             for mask in masks:
                 points = image_processor.process_mask(
-                    mask, frame_height, frame_width, roi
+                    mask, frame_height, frame_width, (roi_top_left, roi_bottom_right)
                 )
                 if points.size > 0:
                     frame[points[:, 0], points[:, 1]] = [0, 0, 255]
