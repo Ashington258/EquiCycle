@@ -5,6 +5,8 @@ from ultralytics import YOLO
 from skimage.morphology import skeletonize
 from sklearn.linear_model import RANSACRegressor
 import torch
+import requests
+import threading
 
 
 class Config:
@@ -13,9 +15,7 @@ class Config:
     MODEL_PATH = (
         "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/model/best.pt"
     )
-    VIDEO_PATH = (
-        "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/video.mp4"
-    )
+    VIDEO_SOURCE = "http://192.168.2.225:5000/video_feed"  # 默认摄像头输入,该项输入路径则读取video，输入url则从局域网拉流
     CONF_THRESH = 0.25
     IMG_SIZE = 1280
     ROI_TOP_LEFT_RATIO = (0, 0.35)
@@ -59,31 +59,21 @@ class ImageProcessor:
     def process_mask(self, mask, frame_height, frame_width, roi):
         """处理掩码，应用形态学操作和骨架提取"""
         roi_top_left, roi_bottom_right = roi
-
-        # 调整掩码尺寸
         mask_height, mask_width = mask.shape[:2]
         if (mask_height, mask_width) != (frame_height, frame_width):
             mask = cv2.resize(
                 mask, (frame_width, frame_height), interpolation=cv2.INTER_NEAREST
             )
 
-        # 限制处理区域到 ROI
         mask_roi = mask[
             roi_top_left[1] : roi_bottom_right[1], roi_top_left[0] : roi_bottom_right[0]
         ]
-
-        # 形态学处理以平滑掩码
         mask_roi = cv2.morphologyEx(mask_roi, cv2.MORPH_OPEN, self.kernel)
         mask_roi = cv2.morphologyEx(mask_roi, cv2.MORPH_CLOSE, self.kernel)
-
-        # 骨架化处理
         skeleton = skeletonize(mask_roi > 0).astype(np.uint8)
-
-        # 提取骨架点坐标
         points = np.column_stack(np.where(skeleton > 0))
 
         if points.size > 0:
-            # 调整点的坐标到原始图像
             points[:, 0] += roi_top_left[1]
             points[:, 1] += roi_top_left[0]
             return points
@@ -92,17 +82,12 @@ class ImageProcessor:
     def fit_lane_with_ransac(self, points, frame):
         """使用RANSAC拟合平滑车道线"""
         if len(points) > 0:
-            # 拆分为 x 和 y 坐标
-            X = points[:, 1].reshape(-1, 1)  # x 坐标
-            y = points[:, 0]  # y 坐标
-
-            # 使用 RANSAC 进行拟合
+            X = points[:, 1].reshape(-1, 1)
+            y = points[:, 0]
             ransac = RANSACRegressor()
             ransac.fit(X, y)
             line_x = np.linspace(X.min(), X.max(), 100).reshape(-1, 1)
             line_y = ransac.predict(line_x).astype(int)
-
-            # 绘制平滑车道线
             for i in range(1, len(line_x)):
                 cv2.line(
                     frame,
@@ -113,29 +98,83 @@ class ImageProcessor:
                 )
 
 
+class VideoStream:
+    """视频流类，支持网络视频流拉取"""
+
+    def __init__(self, url):
+        self.url = url
+        self.bytes_data = b""
+        self.frame = None
+        self.running = True
+        self.thread = threading.Thread(target=self.read_stream, daemon=True)
+        self.thread.start()
+
+    def read_stream(self):
+        response = requests.get(self.url, stream=True)
+        if response.status_code != 200:
+            print("无法连接到视频流")
+            self.running = False
+            return
+        for chunk in response.iter_content(chunk_size=4096):
+            self.bytes_data += chunk
+            a = self.bytes_data.find(b"\xff\xd8")
+            b = self.bytes_data.find(b"\xff\xd9")
+            if a != -1 and b != -1:
+                jpg = self.bytes_data[a : b + 2]
+                self.bytes_data = self.bytes_data[b + 2 :]
+                self.frame = cv2.imdecode(
+                    np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR
+                )
+
+    def get_frame(self):
+        return self.frame
+
+    def stop(self):
+        self.running = False
+
+    def is_running(self):
+        return self.running
+
+
 class VideoProcessor:
-    """视频处理类"""
+    """视频处理类，支持文件、摄像头和网络流"""
 
-    def __init__(self, video_path):
-        self.cap = cv2.VideoCapture(video_path)
-        if not self.cap.isOpened():
-            raise ValueError(f"无法打开视频文件: {video_path}")
+    def __init__(self, video_source):
+        self.cap = None
+        self.video_stream = None
 
-        self.fps_original = self.cap.get(cv2.CAP_PROP_FPS)
-        print(f"原始视频帧率: {self.fps_original}")
+        if video_source.isdigit():
+            self.cap = cv2.VideoCapture(int(video_source))  # 摄像头输入
+            if not self.cap.isOpened():
+                raise ValueError(f"无法打开摄像头设备: {video_source}")
+        elif video_source.startswith("http"):
+            self.video_stream = VideoStream(video_source)  # 网络流输入
+        else:
+            self.cap = cv2.VideoCapture(video_source)  # 视频文件输入
+            if not self.cap.isOpened():
+                raise ValueError(f"无法打开视频文件: {video_source}")
 
+        if self.cap:
+            self.fps_original = self.cap.get(cv2.CAP_PROP_FPS)
+            print(f"原始视频帧率: {self.fps_original}")
         cv2.namedWindow(
             "YOLOv8 Instance Segmentation with Centerline", cv2.WINDOW_NORMAL
         )
 
     def read_frame(self):
-        """读取下一帧"""
-        ret, frame = self.cap.read()
-        return ret, frame
+        if self.cap:
+            ret, frame = self.cap.read()
+            return ret, frame
+        elif self.video_stream:
+            frame = self.video_stream.get_frame()
+            return frame is not None, frame
+        return False, None
 
     def release(self):
-        """释放视频资源"""
-        self.cap.release()
+        if self.cap:
+            self.cap.release()
+        if self.video_stream:
+            self.video_stream.stop()
         cv2.destroyAllWindows()
 
 
@@ -143,7 +182,7 @@ def main():
     # 初始化配置
     config = Config()
 
-    # 确定设备
+    # 选择设备
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # 初始化各个处理器
@@ -153,7 +192,7 @@ def main():
     image_processor = ImageProcessor(
         config.ROI_TOP_LEFT_RATIO, config.ROI_BOTTOM_RIGHT_RATIO
     )
-    video_processor = VideoProcessor(config.VIDEO_PATH)
+    video_processor = VideoProcessor(config.VIDEO_SOURCE)
 
     # 初始化计时器
     prev_time = time.time()
@@ -172,7 +211,7 @@ def main():
         fps = 1 / elapsed_time if elapsed_time > 0 else 0
         prev_time = current_time
 
-        # 在图像上显示FPS
+        # 显示FPS
         cv2.putText(
             frame,
             f"FPS: {fps:.2f}",
@@ -187,19 +226,17 @@ def main():
         frame_height, frame_width = frame.shape[:2]
         roi = image_processor.define_roi(frame_width, frame_height)
 
-        # 绘制ROI矩形
+        # 绘制ROI
         cv2.rectangle(frame, roi[0], roi[1], (0, 255, 0), 2)
 
         # 处理掩码
         if results[0].masks is not None:
             masks = results[0].masks.data.cpu().numpy().astype(np.uint8) * 255
-
             for mask in masks:
                 points = image_processor.process_mask(
                     mask, frame_height, frame_width, roi
                 )
                 if points.size > 0:
-                    # 使用RANSAC拟合并绘制平滑车道线
                     image_processor.fit_lane_with_ransac(points, frame)
 
         # 显示结果
