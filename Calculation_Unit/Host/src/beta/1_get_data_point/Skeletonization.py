@@ -14,7 +14,7 @@ class Config:
     MODEL_PATH = (
         "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/model/best.pt"
     )
-    INPUT_SOURCE = "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/video.mp4"  # 可以是视频路径、摄像头ID或URL
+    INPUT_SOURCE = "2.mp4"  # 可以是视频路径、摄像头ID或URL
     CONF_THRESH = 0.25
     IMG_SIZE = 1280
     ROI_TOP_LEFT_RATIO = (0, 0.35)

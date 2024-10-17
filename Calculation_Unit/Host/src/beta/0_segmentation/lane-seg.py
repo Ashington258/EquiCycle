@@ -8,7 +8,7 @@ model = YOLO(
 )  # 替换为你的模型路径
 
 # 打开视频文件或摄像头
-video_path = "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/video.mp4"  # 替换为你的视频文件路径
+video_path = "2.mp4"  # 替换为你的视频文件路径
 cap = cv2.VideoCapture(video_path)
 
 # 获取视频的帧率
