@@ -3,7 +3,6 @@ import time
 import numpy as np
 from ultralytics import YOLO
 from skimage.morphology import skeletonize
-from skimage.measure import label, regionprops
 import torch
 import requests
 import threading
@@ -15,12 +14,11 @@ class Config:
     MODEL_PATH = (
         "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/model/best.pt"
     )
-    INPUT_SOURCE = "light.mp4"  # 可以是视频路径、摄像头ID或URL
+    INPUT_SOURCE = "2.mp4"  # 可以是视频路径、摄像头ID或URL
     CONF_THRESH = 0.25
     IMG_SIZE = 1280
     ROI_TOP_LEFT_RATIO = (0, 0.35)
     ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
-    MIN_BRANCH_LENGTH = 150  # 小分支过滤阈值
 
 
 class YOLOProcessor:
@@ -57,7 +55,7 @@ class ImageProcessor:
         )
         return roi_top_left, roi_bottom_right
 
-    def process_mask(self, mask, frame_height, frame_width, roi, min_branch_length):
+    def process_mask(self, mask, frame_height, frame_width, roi):
         """处理掩码，应用形态学操作和骨架提取"""
         roi_top_left, roi_bottom_right = roi
 
@@ -75,39 +73,13 @@ class ImageProcessor:
         mask_roi = cv2.morphologyEx(mask_roi, cv2.MORPH_CLOSE, self.kernel)
 
         skeleton = skeletonize(mask_roi > 0).astype(np.uint8)
+        points = np.column_stack(np.where(skeleton > 0))
 
-        # 对骨架进行标记
-        labeled_skeleton = label(skeleton, connectivity=2)
-        processed_skeleton = np.zeros_like(skeleton)
-
-        for region in regionprops(labeled_skeleton):
-            if region.area >= min_branch_length:
-                coords = region.coords
-                processed_skeleton[coords[:, 0], coords[:, 1]] = 1
-
-                # 拟合曲线
-                ys, xs = coords[:, 0], coords[:, 1]
-                if len(xs) >= 2:
-                    z = np.polyfit(xs, ys, 2)  # 二次多项式拟合
-                    p = np.poly1d(z)
-                    x_new = np.linspace(xs.min(), xs.max(), num=100)
-                    y_new = p(x_new)
-
-                    # 将拟合结果绘制在原图上
-                    x_new = x_new.astype(np.int32) + roi_top_left[0]
-                    y_new = y_new.astype(np.int32) + roi_top_left[1]
-
-                    valid_indices = (
-                        (x_new >= 0)
-                        & (x_new < frame_width)
-                        & (y_new >= 0)
-                        & (y_new < frame_height)
-                    )
-                    x_new = x_new[valid_indices]
-                    y_new = y_new[valid_indices]
-
-                    return x_new, y_new
-        return None, None
+        if points.size > 0:
+            points[:, 0] += roi_top_left[1]
+            points[:, 1] += roi_top_left[0]
+            return points
+        return np.array([])
 
 
 class VideoStream:
@@ -259,35 +231,68 @@ def main():
         if results[0].masks is not None:
             masks = results[0].masks.data.cpu().numpy().astype(np.uint8) * 255
 
-            for mask in masks:
-                x_new, y_new = image_processor.process_mask(
-                    mask,
-                    frame_height,
-                    frame_width,
-                    (roi_top_left, roi_bottom_right),
-                    config.MIN_BRANCH_LENGTH,
-                )
-                if x_new is not None and y_new is not None:
-                    # 绘制拟合曲线
-                    for i in range(len(x_new) - 1):
-                        cv2.line(
-                            frame,
-                            (x_new[i], y_new[i]),
-                            (x_new[i + 1], y_new[i + 1]),
-                            (0, 0, 255),
-                            2,
-                        )
+            skeleton_points_list = []
+            avg_x_list = []
 
-        # 显示结果
+            for mask in masks:
+                points = image_processor.process_mask(
+                    mask, frame_height, frame_width, (roi_top_left, roi_bottom_right)
+                )
+                if points.size > 0:
+                    skeleton_points_list.append(points)
+                    avg_x = np.mean(points[:, 1])  # 计算平均x坐标
+                    avg_x_list.append(avg_x)
+
+            # 根据平均x坐标对骨架点列表进行排序
+            if len(avg_x_list) > 0:
+                sorted_indices = np.argsort(avg_x_list)
+                skeleton_points_list = [skeleton_points_list[i] for i in sorted_indices]
+
+                # 可选：绘制每个骨架点
+                for points in skeleton_points_list:
+                    frame[points[:, 0], points[:, 1]] = [0, 0, 255]  # 红色骨架点
+
+                # 计算中心线
+                def build_y_to_avg_x(points):
+                    y_to_x_list = {}
+                    for y, x in points:
+                        if y not in y_to_x_list:
+                            y_to_x_list[y] = []
+                        y_to_x_list[y].append(x)
+                    y_to_avg_x = {
+                        y: np.mean(x_list) for y, x_list in y_to_x_list.items()
+                    }
+                    return y_to_avg_x
+
+                for i in range(0, len(skeleton_points_list) - 1, 2):
+                    if (
+                        len(skeleton_points_list[i]) > 0
+                        and len(skeleton_points_list[i + 1]) > 0
+                    ):
+                        avg_x_1 = np.mean(skeleton_points_list[i][:, 1])
+                        avg_x_2 = np.mean(skeleton_points_list[i + 1][:, 1])
+                        mid_x = (avg_x_1 + avg_x_2) / 2
+
+                        # 调试信息：打印计算出的中点
+                        print(f"Midpoint X: {mid_x}, Y: {np.mean(skeleton_points_list[i][:, 0])}")
+
+                        # 绘制中点，增加线条粗细和颜色对比
+                        y_coord = (
+                            np.max(skeleton_points_list[i][:, 0])
+                            + np.min(skeleton_points_list[i + 1][:, 0])
+                        ) // 2
+                        cv2.circle(frame, (int(mid_x), int(y_coord)), 5, (255, 0, 0), -1)  # 蓝色中点，增加半径到5像素
+
+        # 显示处理后的视频帧
         cv2.imshow("YOLOv8 Instance Segmentation with Centerline", frame)
 
         # 按 'q' 键退出
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
-    # 释放资源
     video_processor.release()
 
 
 if __name__ == "__main__":
     main()
+

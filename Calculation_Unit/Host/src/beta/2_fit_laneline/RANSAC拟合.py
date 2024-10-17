@@ -17,7 +17,7 @@ class Config:
     )
     # 模型文件路径
 
-    VIDEO_SOURCE = "3.mp4"
+    VIDEO_SOURCE = "2.mp4"
     # 视频源配置：
     # - 摄像头输入: 0, 1, 2...
     # - 视频文件路径: "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/video.mp4"

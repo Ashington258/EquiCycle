@@ -7,6 +7,8 @@ from skimage.measure import label, regionprops
 import torch
 import requests
 import threading
+from scipy.spatial import cKDTree
+from scipy.interpolate import splprep, splev
 
 
 class Config:
@@ -15,12 +17,12 @@ class Config:
     MODEL_PATH = (
         "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/model/best.pt"
     )
-    INPUT_SOURCE = "light.mp4"  # 可以是视频路径、摄像头ID或URL
+    INPUT_SOURCE = "2.mp4"  # 可以是视频路径、摄像头ID或URL
     CONF_THRESH = 0.25
     IMG_SIZE = 1280
     ROI_TOP_LEFT_RATIO = (0, 0.35)
     ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
-    MIN_BRANCH_LENGTH = 150  # 小分支过滤阈值
+    MIN_BRANCH_LENGTH = 1  # 最小分支长度阈值
 
 
 class YOLOProcessor:
@@ -40,10 +42,17 @@ class YOLOProcessor:
 class ImageProcessor:
     """图像处理类"""
 
-    def __init__(self, roi_top_left_ratio, roi_bottom_right_ratio, kernel_size=(5, 5)):
+    def __init__(
+        self,
+        roi_top_left_ratio,
+        roi_bottom_right_ratio,
+        kernel_size=(5, 5),
+        min_branch_length=50,
+    ):
         self.roi_top_left_ratio = roi_top_left_ratio
         self.roi_bottom_right_ratio = roi_bottom_right_ratio
         self.kernel = cv2.getStructuringElement(cv2.MORPH_RECT, kernel_size)
+        self.min_branch_length = min_branch_length
 
     def define_roi(self, frame_width, frame_height):
         """定义感兴趣区域 (ROI)"""
@@ -57,8 +66,8 @@ class ImageProcessor:
         )
         return roi_top_left, roi_bottom_right
 
-    def process_mask(self, mask, frame_height, frame_width, roi, min_branch_length):
-        """处理掩码，应用形态学操作和骨架提取"""
+    def process_mask(self, mask, frame_height, frame_width, roi):
+        """处理掩码，应用形态学操作和骨架提取，并进行B样条插值"""
         roi_top_left, roi_bottom_right = roi
 
         mask_height, mask_width = mask.shape[:2]
@@ -76,38 +85,94 @@ class ImageProcessor:
 
         skeleton = skeletonize(mask_roi > 0).astype(np.uint8)
 
-        # 对骨架进行标记
+        # 标记骨架的连接组件
         labeled_skeleton = label(skeleton, connectivity=2)
-        processed_skeleton = np.zeros_like(skeleton)
+        regions = regionprops(labeled_skeleton)
 
-        for region in regionprops(labeled_skeleton):
-            if region.area >= min_branch_length:
+        all_points = []
+
+        for region in regions:
+            if region.area >= self.min_branch_length:
                 coords = region.coords
-                processed_skeleton[coords[:, 0], coords[:, 1]] = 1
+                # 调整坐标到原始帧
+                coords[:, 0] += roi_top_left[1]
+                coords[:, 1] += roi_top_left[0]
 
-                # 拟合曲线
-                ys, xs = coords[:, 0], coords[:, 1]
-                if len(xs) >= 2:
-                    z = np.polyfit(xs, ys, 2)  # 二次多项式拟合
-                    p = np.poly1d(z)
-                    x_new = np.linspace(xs.min(), xs.max(), num=100)
-                    y_new = p(x_new)
+                # 寻找骨架的端点
+                padded_skeleton = np.pad(skeleton, ((1, 1), (1, 1)), mode="constant")
+                skel_coords = (
+                    coords - [roi_top_left[1], roi_top_left[0]] + 1
+                )  # 调整坐标
+                neighbor_offsets = [
+                    (-1, -1),
+                    (-1, 0),
+                    (-1, 1),
+                    (0, -1),
+                    (0, 1),
+                    (1, -1),
+                    (1, 0),
+                    (1, 1),
+                ]
+                degrees = []
+                for r, c in skel_coords:
+                    degree = 0
+                    for dr, dc in neighbor_offsets:
+                        if padded_skeleton[r + dr, c + dc]:
+                            degree += 1
+                    degrees.append(degree)
+                degrees = np.array(degrees)
+                endpoints = coords[degrees == 1]
 
-                    # 将拟合结果绘制在原图上
-                    x_new = x_new.astype(np.int32) + roi_top_left[0]
-                    y_new = y_new.astype(np.int32) + roi_top_left[1]
+                if len(endpoints) >= 2:
+                    start_point = endpoints[0]
+                else:
+                    start_point = coords[0]
 
-                    valid_indices = (
-                        (x_new >= 0)
-                        & (x_new < frame_width)
-                        & (y_new >= 0)
-                        & (y_new < frame_height)
-                    )
-                    x_new = x_new[valid_indices]
-                    y_new = y_new[valid_indices]
+                # 使用cKDTree排序坐标
+                tree = cKDTree(coords)
+                ordered_coords = [start_point]
+                used = set()
+                used.add(tuple(start_point))
+                current_point = start_point
 
-                    return x_new, y_new
-        return None, None
+                while len(ordered_coords) < len(coords):
+                    distances, indices = tree.query(current_point, k=2)
+                    for i in indices:
+                        neighbor = coords[i]
+                        neighbor_tuple = tuple(neighbor)
+                        if neighbor_tuple not in used:
+                            ordered_coords.append(neighbor)
+                            used.add(neighbor_tuple)
+                            current_point = neighbor
+                            break
+                    else:
+                        break
+
+                ordered_coords = np.array(ordered_coords)
+                x = ordered_coords[:, 1]
+                y = ordered_coords[:, 0]
+
+                # 参数化点
+                distances = np.sqrt(np.diff(x) ** 2 + np.diff(y) ** 2)
+                s = np.concatenate(([0], np.cumsum(distances)))
+                s = s / s[-1]
+
+                # B样条插值
+                try:
+                    tck, u = splprep([x, y], s=0)
+                    unew = np.linspace(0, 1, num=100)
+                    out = splev(unew, tck)
+                    x_new, y_new = out[0], out[1]
+                    interpolated_coords = np.column_stack((y_new, x_new))
+                except Exception as e:
+                    print(f"B样条插值失败: {e}")
+                    interpolated_coords = ordered_coords
+
+                all_points.append(interpolated_coords)
+        if all_points:
+            return all_points
+        else:
+            return None
 
 
 class VideoStream:
@@ -212,7 +277,9 @@ def main():
         config.MODEL_PATH, config.CONF_THRESH, config.IMG_SIZE, device
     )
     image_processor = ImageProcessor(
-        config.ROI_TOP_LEFT_RATIO, config.ROI_BOTTOM_RIGHT_RATIO
+        config.ROI_TOP_LEFT_RATIO,
+        config.ROI_BOTTOM_RIGHT_RATIO,
+        min_branch_length=config.MIN_BRANCH_LENGTH,
     )
     video_processor = VideoProcessor(config.INPUT_SOURCE)
 
@@ -260,23 +327,25 @@ def main():
             masks = results[0].masks.data.cpu().numpy().astype(np.uint8) * 255
 
             for mask in masks:
-                x_new, y_new = image_processor.process_mask(
+                splines = image_processor.process_mask(
                     mask,
                     frame_height,
                     frame_width,
                     (roi_top_left, roi_bottom_right),
-                    config.MIN_BRANCH_LENGTH,
                 )
-                if x_new is not None and y_new is not None:
-                    # 绘制拟合曲线
-                    for i in range(len(x_new) - 1):
-                        cv2.line(
-                            frame,
-                            (x_new[i], y_new[i]),
-                            (x_new[i + 1], y_new[i + 1]),
-                            (0, 0, 255),
-                            2,
-                        )
+                if splines is not None:
+                    for spline_coords in splines:
+                        # 绘制插值后的B样条
+                        for i in range(len(spline_coords) - 1):
+                            pt1 = (
+                                int(spline_coords[i][1]),
+                                int(spline_coords[i][0]),
+                            )
+                            pt2 = (
+                                int(spline_coords[i + 1][1]),
+                                int(spline_coords[i + 1][0]),
+                            )
+                            cv2.line(frame, pt1, pt2, (0, 0, 255), 2)
 
         # 显示结果
         cv2.imshow("YOLOv8 Instance Segmentation with Centerline", frame)
