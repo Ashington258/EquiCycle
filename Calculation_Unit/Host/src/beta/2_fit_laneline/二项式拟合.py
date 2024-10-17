@@ -3,151 +3,291 @@ import time
 import numpy as np
 from ultralytics import YOLO
 from skimage.morphology import skeletonize
+from skimage.measure import label, regionprops
 import torch
+import requests
+import threading
 
-# 参数列表
-params = {
-    "model_path": "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/model/best.pt",  # 模型路径
-    "video_path": "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/video.mp4",  # 视频文件路径
-    "conf_thresh": 0.25,  # YOLOv8 模型置信度阈值
-    "img_size": 1280,  # YOLOv8 模型输入图像尺寸
-    "roi_top_left_ratio": (0, 0.25),  # ROI区域左上角比例
-    "roi_bottom_right_ratio": (1, 0.75),  # ROI区域右下角比例
-}
 
-# 加载训练好的 YOLOv8 模型，并移动到GPU（如果可用）
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model = YOLO(params["model_path"]).to(device)
+class Config:
+    """配置参数类"""
 
-# 设置 YOLOv8 模型的图像输入尺寸和置信度阈值
-model.conf = params["conf_thresh"]
-model.imgsz = params["img_size"]
-
-# 打开视频文件或摄像头
-cap = cv2.VideoCapture(params["video_path"])
-
-# 获取视频的帧率
-fps_original = cap.get(cv2.CAP_PROP_FPS)
-print(f"原始视频帧率: {fps_original}")
-
-# 视频窗口
-cv2.namedWindow("YOLOv8 Instance Segmentation with Centerline", cv2.WINDOW_NORMAL)
-
-# 初始化计时器
-prev_time = time.time()
-
-# 定义形态学核，避免在循环中重复创建
-kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-
-while cap.isOpened():
-    ret, frame = cap.read()
-    if not ret:
-        break
-
-    # YOLOv8 模型对当前帧进行推理
-    results = model(frame)
-
-    # 获取当前时间
-    current_time = time.time()
-
-    # 计算 FPS
-    fps = 1 / (current_time - prev_time) if prev_time != 0 else 0
-    prev_time = current_time
-
-    # 将帧率写到图像上
-    cv2.putText(
-        frame, f"FPS: {fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2
+    MODEL_PATH = (
+        "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/model/best.pt"
     )
+    INPUT_SOURCE = "2.mp4"  # 可以是视频路径、摄像头ID或URL
+    CONF_THRESH = 0.25
+    IMG_SIZE = 1280
+    ROI_TOP_LEFT_RATIO = (0, 0.35)
+    ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
+    MIN_BRANCH_LENGTH = 150  # 小分支过滤阈值
 
-    # 获取图像尺寸并定义 ROI 区域
-    frame_height, frame_width = frame.shape[:2]
-    roi_top_left = (
-        int(frame_width * params["roi_top_left_ratio"][0]),
-        int(frame_height * params["roi_top_left_ratio"][1]),
-    )
-    roi_bottom_right = (
-        int(frame_width * params["roi_bottom_right_ratio"][0]),
-        int(frame_height * params["roi_bottom_right_ratio"][1]),
-    )
 
-    # 在原始帧上绘制矩形框，表示感兴趣区域
-    cv2.rectangle(frame, roi_top_left, roi_bottom_right, (0, 255, 0), 2)
+class YOLOProcessor:
+    """YOLO模型处理类"""
 
-    # 获取分割后的掩码（确保存在检测结果）
-    if results[0].masks is not None:
-        masks = results[0].masks.data.cpu().numpy().astype(np.uint8) * 255
+    def __init__(self, model_path, conf_thresh, img_size, device):
+        self.device = device
+        self.model = YOLO(model_path).to(self.device)
+        self.model.conf = conf_thresh
+        self.model.imgsz = img_size
 
-        # 遍历每个掩码
-        for i in range(masks.shape[0]):
-            mask = masks[i]
+    def infer(self, frame):
+        """对单帧进行推理"""
+        return self.model(frame, device=self.device, verbose=False)
 
-            # 确保 mask 大小与原始帧匹配
-            mask_resized = cv2.resize(
-                mask, (frame.shape[1], frame.shape[0]), interpolation=cv2.INTER_NEAREST
-            )  # 使用最近邻插值确保掩码不失真
 
-            # 限制处理区域到 ROI（中间区域）
-            mask_roi = np.zeros_like(mask_resized)  # 创建一个全零的掩码
-            mask_roi[
-                roi_top_left[1] : roi_bottom_right[1],
-                roi_top_left[0] : roi_bottom_right[0],
-            ] = mask_resized[
-                roi_top_left[1] : roi_bottom_right[1],
-                roi_top_left[0] : roi_bottom_right[0],
-            ]
+class ImageProcessor:
+    """图像处理类"""
 
-            # 形态学处理以平滑掩码
-            mask_roi = cv2.morphologyEx(mask_roi, cv2.MORPH_OPEN, kernel)
-            mask_roi = cv2.morphologyEx(mask_roi, cv2.MORPH_CLOSE, kernel)
+    def __init__(self, roi_top_left_ratio, roi_bottom_right_ratio, kernel_size=(5, 5)):
+        self.roi_top_left_ratio = roi_top_left_ratio
+        self.roi_bottom_right_ratio = roi_bottom_right_ratio
+        self.kernel = cv2.getStructuringElement(cv2.MORPH_RECT, kernel_size)
 
-            # 骨架化处理
-            skeleton = skeletonize(mask_roi > 0).astype(np.uint8)
+    def define_roi(self, frame_width, frame_height):
+        """定义感兴趣区域 (ROI)"""
+        roi_top_left = (
+            int(frame_width * self.roi_top_left_ratio[0]),
+            int(frame_height * self.roi_top_left_ratio[1]),
+        )
+        roi_bottom_right = (
+            int(frame_width * self.roi_bottom_right_ratio[0]),
+            int(frame_height * self.roi_bottom_right_ratio[1]),
+        )
+        return roi_top_left, roi_bottom_right
 
-            # 提取骨架点坐标
-            points = np.column_stack(np.where(skeleton > 0))
+    def process_mask(self, mask, frame_height, frame_width, roi, min_branch_length):
+        """处理掩码，应用形态学操作和骨架提取"""
+        roi_top_left, roi_bottom_right = roi
 
-            min_points_threshold = 20  # 设置最小点数阈值，避免拟合过短线段
-            if len(points) > min_points_threshold:
-                # 获取骨架点的x和y坐标
-                x = points[:, 1]
-                y = points[:, 0]
+        mask_height, mask_width = mask.shape[:2]
+        if (mask_height, mask_width) != (frame_height, frame_width):
+            mask = cv2.resize(
+                mask, (frame_width, frame_height), interpolation=cv2.INTER_NEAREST
+            )
 
-                # 对骨架点进行二项式拟合，degree=2表示二项式
-                poly_params = np.polyfit(x, y, 2)
-                poly_func = np.poly1d(poly_params)
+        mask_roi = mask[
+            roi_top_left[1] : roi_bottom_right[1], roi_top_left[0] : roi_bottom_right[0]
+        ]
 
-                # 使用拟合函数计算平滑后的点
-                x_fit = np.linspace(x.min(), x.max(), 100)
-                y_fit = poly_func(x_fit)
+        mask_roi = cv2.morphologyEx(mask_roi, cv2.MORPH_OPEN, self.kernel)
+        mask_roi = cv2.morphologyEx(mask_roi, cv2.MORPH_CLOSE, self.kernel)
 
-                # 计算曲率
-                first_derivative = np.polyder(poly_func, 1)
-                second_derivative = np.polyder(poly_func, 2)
-                curvatures = (
-                    np.abs(second_derivative(x_fit))
-                    / (1 + first_derivative(x_fit) ** 2) ** 1.5
+        skeleton = skeletonize(mask_roi > 0).astype(np.uint8)
+
+        # 对骨架进行标记
+        labeled_skeleton = label(skeleton, connectivity=2)
+        processed_skeleton = np.zeros_like(skeleton)
+
+        for region in regionprops(labeled_skeleton):
+            if region.area >= min_branch_length:
+                coords = region.coords
+                processed_skeleton[coords[:, 0], coords[:, 1]] = 1
+
+                # 拟合曲线
+                ys, xs = coords[:, 0], coords[:, 1]
+                if len(xs) >= 2:
+                    z = np.polyfit(xs, ys, 2)  # 二次多项式拟合
+                    p = np.poly1d(z)
+                    x_new = np.linspace(xs.min(), xs.max(), num=100)
+                    y_new = p(x_new)
+
+                    # 将拟合结果绘制在原图上
+                    x_new = x_new.astype(np.int32) + roi_top_left[0]
+                    y_new = y_new.astype(np.int32) + roi_top_left[1]
+
+                    valid_indices = (
+                        (x_new >= 0)
+                        & (x_new < frame_width)
+                        & (y_new >= 0)
+                        & (y_new < frame_height)
+                    )
+                    x_new = x_new[valid_indices]
+                    y_new = y_new[valid_indices]
+
+                    return x_new, y_new
+        return None, None
+
+
+class VideoStream:
+    """网络视频流处理类"""
+
+    def __init__(self, url):
+        self.url = url
+        self.bytes_data = b""
+        self.frame = None
+        self.running = True
+        self.thread = threading.Thread(target=self.read_stream, daemon=True)
+        self.thread.start()
+
+    def read_stream(self):
+        response = requests.get(self.url, stream=True)
+        if response.status_code != 200:
+            print("无法连接到视频流")
+            self.running = False
+            return
+
+        for chunk in response.iter_content(chunk_size=4096):
+            self.bytes_data += chunk
+            a = self.bytes_data.find(b"\xff\xd8")
+            b = self.bytes_data.find(b"\xff\xd9")
+            if a != -1 and b != -1:
+                jpg = self.bytes_data[a : b + 2]
+                self.bytes_data = self.bytes_data[b + 2 :]
+                self.frame = cv2.imdecode(
+                    np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR
                 )
 
-                # 设置最大曲率阈值，过滤掉过弯的线段
-                max_curvature_threshold = 0.005  # 根据实际场景调整该值
-                if np.all(curvatures < max_curvature_threshold):
-                    # 曲率在合理范围内，绘制拟合曲线
-                    for j in range(len(x_fit) - 1):
-                        pt1 = (int(x_fit[j]), int(y_fit[j]))
-                        pt2 = (int(x_fit[j + 1]), int(y_fit[j + 1]))
-                        cv2.line(frame, pt1, pt2, (255, 0, 0), 2)  # 蓝色曲线
+    def get_frame(self):
+        return self.frame
 
-    # 绘制分割和中心线
-    annotated_frame = results[0].plot()  # 结果绘制在图像上
-    combined_frame = cv2.addWeighted(frame, 0.7, annotated_frame, 0.3, 0)
+    def stop(self):
+        self.running = False
 
-    # 显示当前帧
-    cv2.imshow("YOLOv8 Instance Segmentation with Centerline", combined_frame)
+    def is_running(self):
+        return self.running
 
-    # 按下 'q' 键退出
-    if cv2.waitKey(1) & 0xFF == ord("q"):
-        break
 
-# 释放视频和窗口资源
-cap.release()
-cv2.destroyAllWindows()
+class VideoProcessor:
+    """视频处理类，支持本地视频、摄像头或网络流"""
+
+    def __init__(self, input_source):
+        if isinstance(input_source, str):
+            if input_source.startswith("http://") or input_source.startswith(
+                "https://"
+            ):
+                self.stream = VideoStream(input_source)
+                self.cap = None
+            else:
+                self.cap = cv2.VideoCapture(input_source)
+                if not self.cap.isOpened():
+                    raise ValueError(f"无法打开视频文件: {input_source}")
+                self.stream = None
+        elif isinstance(input_source, int):
+            self.cap = cv2.VideoCapture(input_source)
+            if not self.cap.isOpened():
+                raise ValueError(f"无法打开摄像头: {input_source}")
+            self.stream = None
+        else:
+            raise ValueError("未知的输入源类型")
+
+        if self.cap is not None:
+            self.fps_original = self.cap.get(cv2.CAP_PROP_FPS)
+            print(f"原始视频帧率: {self.fps_original}")
+
+        cv2.namedWindow(
+            "YOLOv8 Instance Segmentation with Centerline", cv2.WINDOW_NORMAL
+        )
+
+    def read_frame(self):
+        """读取下一帧"""
+        if self.cap:
+            ret, frame = self.cap.read()
+            return ret, frame
+        elif self.stream:
+            frame = self.stream.get_frame()
+            if frame is not None:
+                return True, frame
+        return False, None
+
+    def release(self):
+        """释放资源"""
+        if self.cap:
+            self.cap.release()
+        if self.stream:
+            self.stream.stop()
+        cv2.destroyAllWindows()
+
+
+def main():
+    # 初始化配置
+    config = Config()
+
+    # 确定设备
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # 初始化处理器
+    yolo_processor = YOLOProcessor(
+        config.MODEL_PATH, config.CONF_THRESH, config.IMG_SIZE, device
+    )
+    image_processor = ImageProcessor(
+        config.ROI_TOP_LEFT_RATIO, config.ROI_BOTTOM_RIGHT_RATIO
+    )
+    video_processor = VideoProcessor(config.INPUT_SOURCE)
+
+    # 初始化计时器
+    prev_time = time.time()
+
+    while True:
+        ret, frame = video_processor.read_frame()
+        if not ret:
+            break
+
+        # YOLO推理
+        results = yolo_processor.infer(frame)
+
+        # 计算FPS
+        current_time = time.time()
+        elapsed_time = current_time - prev_time
+        fps = 1 / elapsed_time if elapsed_time > 0 else 0
+        prev_time = current_time
+
+        # 显示FPS
+        cv2.putText(
+            frame,
+            f"FPS: {fps:.2f}",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 0),
+            2,
+        )
+
+        # 定义ROI
+        frame_height, frame_width = frame.shape[:2]
+        roi_top_left, roi_bottom_right = image_processor.define_roi(
+            frame_width, frame_height
+        )
+
+        # 绘制ROI矩形
+        cv2.rectangle(
+            frame, roi_top_left, roi_bottom_right, (0, 255, 0), 2
+        )  # 绿色矩形，线条粗细为2
+
+        # 处理掩码
+        if results[0].masks is not None:
+            masks = results[0].masks.data.cpu().numpy().astype(np.uint8) * 255
+
+            for mask in masks:
+                x_new, y_new = image_processor.process_mask(
+                    mask,
+                    frame_height,
+                    frame_width,
+                    (roi_top_left, roi_bottom_right),
+                    config.MIN_BRANCH_LENGTH,
+                )
+                if x_new is not None and y_new is not None:
+                    # 绘制拟合曲线
+                    for i in range(len(x_new) - 1):
+                        cv2.line(
+                            frame,
+                            (x_new[i], y_new[i]),
+                            (x_new[i + 1], y_new[i + 1]),
+                            (0, 0, 255),
+                            2,
+                        )
+
+        # 显示结果
+        cv2.imshow("YOLOv8 Instance Segmentation with Centerline", frame)
+
+        # 按 'q' 键退出
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
+
+    # 释放资源
+    video_processor.release()
+
+
+if __name__ == "__main__":
+    main()
