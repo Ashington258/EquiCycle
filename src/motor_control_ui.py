@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QLabel,
     QLineEdit,
+    QSlider,
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPalette, QColor
@@ -22,7 +23,7 @@ class MotorControlUI(QWidget):
 
     def init_ui(self):
         self.setWindowTitle("Motor Control")
-        self.resize(400, 300)
+        self.resize(400, 400)
 
         # Dark Theme Palette
         dark_palette = QPalette()
@@ -58,28 +59,26 @@ class MotorControlUI(QWidget):
         layout.addLayout(connection_layout)
 
         # Motor Position Controls
-        position_layout = QHBoxLayout()
-        self.position_input = QLineEdit(self)
-        self.position_input.setPlaceholderText("Enter position (turns)")
-        self.position_input.setStyleSheet("background-color: #353535; color: white;")
-        position_layout.addWidget(self.position_input)
-
-        set_position_button = QPushButton("Set Position", self)
-        set_position_button.clicked.connect(self.set_motor_position)
-        position_layout.addWidget(set_position_button)
+        position_layout = QVBoxLayout()
+        self.position_slider = QSlider(Qt.Horizontal, self)
+        self.position_slider.setMinimum(0)
+        self.position_slider.setMaximum(1000)  # Example range for motor position
+        self.position_slider.setValue(000)
+        self.position_slider.valueChanged.connect(self.slider_position_changed)
+        position_layout.addWidget(QLabel("Motor Position (turns):"))
+        position_layout.addWidget(self.position_slider)
 
         layout.addLayout(position_layout)
 
         # Motor Velocity Controls
-        velocity_layout = QHBoxLayout()
-        self.velocity_input = QLineEdit(self)
-        self.velocity_input.setPlaceholderText("Enter velocity (turns/s)")
-        self.velocity_input.setStyleSheet("background-color: #353535; color: white;")
-        velocity_layout.addWidget(self.velocity_input)
-
-        set_velocity_button = QPushButton("Set Velocity", self)
-        set_velocity_button.clicked.connect(self.set_motor_velocity)
-        velocity_layout.addWidget(set_velocity_button)
+        velocity_layout = QVBoxLayout()
+        self.velocity_slider = QSlider(Qt.Horizontal, self)
+        self.velocity_slider.setMinimum(-200)
+        self.velocity_slider.setMaximum(200)  # Example range for motor velocity
+        self.velocity_slider.setValue(0)
+        self.velocity_slider.valueChanged.connect(self.slider_velocity_changed)
+        velocity_layout.addWidget(QLabel("Motor Velocity (turns/s):"))
+        velocity_layout.addWidget(self.velocity_slider)
 
         layout.addLayout(velocity_layout)
 
@@ -108,25 +107,19 @@ class MotorControlUI(QWidget):
             except Exception as e:
                 self.feedback_label.setText(f"Failed to connect: {e}")
 
-    def set_motor_position(self):
+    def slider_position_changed(self, value):
         if self.odrive:
-            try:
-                position = float(self.position_input.text())
-                self.odrive.motor_position(0, position)
-                self.feedback_label.setText(f"Motor position set to {position}")
-            except ValueError:
-                self.feedback_label.setText("Invalid position value")
+            position = value / 100.0  # Convert to a float range if necessary
+            self.odrive.motor_position(0, position)
+            self.feedback_label.setText(f"Motor position set to {position}")
         else:
             self.feedback_label.setText("ODrive not connected")
 
-    def set_motor_velocity(self):
+    def slider_velocity_changed(self, value):
         if self.odrive:
-            try:
-                velocity = float(self.velocity_input.text())
-                self.odrive.motor_velocity(0, velocity)
-                self.feedback_label.setText(f"Motor velocity set to {velocity}")
-            except ValueError:
-                self.feedback_label.setText("Invalid velocity value")
+            velocity = value / 10.0  # Convert to a suitable velocity range
+            self.odrive.motor_velocity(0, velocity)
+            self.feedback_label.setText(f"Motor velocity set to {velocity}")
         else:
             self.feedback_label.setText("ODrive not connected")
 
