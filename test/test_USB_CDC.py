@@ -16,7 +16,7 @@ def main():
         time.sleep(2)
 
         # 发送测试消息
-        test_message = "v 0 1\n"
+        test_message = "v 0 10\n"
         ser.write(test_message.encode())
         print(f"发送: {test_message.strip()}")
 
