@@ -132,6 +132,7 @@ if __name__ == "__main__":
                 frames = decoder.parse(data)
                 for frame in frames:
                     # Publish the parsed data via ZeroMQ
+                    frame["topic"] = "imu_data"  # 添加主题信息
                     publisher.send_json(frame)
                     logging.info(f"Published frame: {frame}")
     except KeyboardInterrupt:
