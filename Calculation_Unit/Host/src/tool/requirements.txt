@@ -1,3 +1,0 @@
-wmi 
-pywin32
-windows-curses
