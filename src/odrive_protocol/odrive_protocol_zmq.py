@@ -1,15 +1,10 @@
 import serial
 import serial.tools.list_ports
-import zmq  # 导入 zmq 库
 
 
 class ODriveAsciiProtocol:
     def __init__(self, port: str, baudrate: int = 460800):
         self.serial = serial.Serial(port, baudrate, timeout=1)
-        # 初始化 zmq 上下文和发布套接字
-        self.zmq_context = zmq.Context()
-        self.zmq_socket = self.zmq_context.socket(zmq.PUB)
-        self.zmq_socket.bind("tcp://*:5555")  # 绑定到指定端口，您可以根据需要更改端口号
 
     def send_command(self, command: str):
         # Debug information: Show the command being sent
@@ -22,8 +17,6 @@ class ODriveAsciiProtocol:
         response = self.serial.readline().decode().strip()
         # Debug information: Show the response received
         print(f"Received response: {response}")
-        # 使用 zmq 发布消息，主题为 'odrive'
-        self.zmq_socket.send_string(f"odrive {response}")
         return response
 
     def motor_trajectory(self, motor: int, destination: float):
@@ -109,9 +102,6 @@ class ODriveAsciiProtocol:
 
     def close(self):
         self.serial.close()
-        # 关闭 zmq 套接字和上下文
-        self.zmq_socket.close()
-        self.zmq_context.term()
 
     @staticmethod
     def find_odrive():

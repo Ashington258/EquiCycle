@@ -1,9 +1,12 @@
 import struct
-import logging
+# import logging
+from logger.logger import HandleLog
+
+log = HandleLog()
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-
+# logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+log = HandleLog()
 # Constant definitions
 CHSYNC1 = 0x5A
 CHSYNC2 = 0xA5
