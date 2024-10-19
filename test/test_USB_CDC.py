@@ -2,7 +2,7 @@ import serial
 import time
 
 # 替换为你的 USB CDC 设备的串口号
-USB_CDC_PORT = "COM10"  # 在 Windows 上通常是 COM3，Linux 上可能是 /dev/ttyUSB0
+USB_CDC_PORT = "COM24"  # 在 Windows 上通常是 COM3，Linux 上可能是 /dev/ttyUSB0
 BAUD_RATE = 460800  # 根据你的设备设置波特率
 
 
@@ -16,7 +16,7 @@ def main():
         time.sleep(2)
 
         # 发送测试消息
-        test_message = "v 0 10\n"
+        test_message = "v 0 2\n"
         ser.write(test_message.encode())
         print(f"发送: {test_message.strip()}")
 
