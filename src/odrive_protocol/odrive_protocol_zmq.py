@@ -1,10 +1,16 @@
 import serial
 import serial.tools.list_ports
+import zmq
 
 
 class ODriveAsciiProtocol:
     def __init__(self, port: str, baudrate: int = 460800):
         self.serial = serial.Serial(port, baudrate, timeout=1)
+
+        # ZeroMQ setup for publisher
+        context = zmq.Context()
+        self.publisher = context.socket(zmq.PUB)
+        self.publisher.bind("tcp://*:5555")  # Binds to a TCP port for publishing data
 
     def send_command(self, command: str):
         # Debug information: Show the command being sent
@@ -13,10 +19,11 @@ class ODriveAsciiProtocol:
         self.serial.write(f"{command}\n".encode())
 
     def read_response(self):
-        # Read the response from ODrive
         response = self.serial.readline().decode().strip()
-        # Debug information: Show the response received
         print(f"Received response: {response}")
+        # 假设 response 包含电机速度数据
+        topic = "odrive"  # 设定主题
+        self.publisher.send_string(f"{topic} {response}")  # 发布主题和数据
         return response
 
     def motor_trajectory(self, motor: int, destination: float):
