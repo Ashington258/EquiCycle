@@ -3,3 +3,7 @@ odrive
 pyserial
 keyboard
 PyQt5
+numpy
+matplotlib
+pyzmq
+rich
