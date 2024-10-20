@@ -57,3 +57,6 @@ CMakePresets.json
 cmake_install.cmake
 compile_commands.json
 
+# Ignore python cache
+__pycache__/
+cache.md
