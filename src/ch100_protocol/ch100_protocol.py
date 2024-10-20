@@ -108,7 +108,7 @@ class CH100Device:
             logging.info(f"关闭串口 {self.port}")
 
     def read_and_parse(self):
-        data = self.serial.read(1024)
+        data = self.serial.read(82)  # CORE
         if data:
             frames = self.parser.parse(data)
             return frames
