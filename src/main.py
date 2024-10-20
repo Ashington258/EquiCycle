@@ -7,6 +7,9 @@ from self_check.self_check import self_check
 from ch100_protocol.ch100_protocol import CH100Device
 from odrive_protocol.odrive_protocol import ODriveAsciiProtocol
 from ZMQ_Publisher.publisher import ZMQPublisher
+from balance_control.balance_control import (
+    control_layer,
+)  # 导入控制模块中的 control_layer 函数
 
 # Configure logging
 logging.basicConfig(
@@ -28,14 +31,6 @@ odrive_config = config["odrive"]
 # Global stop event
 stop_event = threading.Event()
 
-# Shared control parameters
-control_params = {}
-control_params_lock = threading.Lock()
-
-
-def control_layer(data):
-    logging.info(f"✅ Control layer processing data: {data}")
-
 
 def setup_publisher(port):
     publisher = ZMQPublisher(port=port)
@@ -54,6 +49,7 @@ def ch100_thread_function():
         while not stop_event.is_set():
             frames = ch100_device.read_and_parse()
             for frame in frames:
+                frame["device"] = "ch100"  # Add device identifier
                 publisher.send_json(frame)
                 logging.debug(f"Published CH100 frame: {frame}")
     except Exception as e:
@@ -65,7 +61,7 @@ def ch100_thread_function():
 
 
 def odrive_thread_function():
-    logging.info("Starting ODrive thread")
+    logging.info("启动 ODrive 线程")
     odrive = ODriveAsciiProtocol(
         port=odrive_config["port"], baudrate=odrive_config["baudrate"]
     )
@@ -74,19 +70,19 @@ def odrive_thread_function():
     try:
         while not stop_event.is_set():
             try:
-                with control_params_lock:
-                    motor_speed = control_params.get("motor_speed", 8)
-                odrive.motor_velocity(0, motor_speed)
                 feedback = odrive.request_feedback(0)
-                publisher.send_string(f"motor_speed {feedback}")
-                logging.debug(f"Published ODrive feedback: {feedback}")
-                time.sleep(0.001)  # Adjusted for efficient cycling
+                data = {
+                    "device": "odrive",  # 添加设备标识符
+                    "feedback": feedback,
+                }
+                publisher.send_json(data)
+                logging.info(f"已发布 ODrive 反馈: {data}")
             except Exception as e:
-                logging.error(f"ODrive thread error: {e}")
+                logging.error(f"ODrive 线程错误: {e}")
     finally:
         odrive.close()
         publisher.close()
-        logging.info("ODrive thread stopped")
+        logging.info("ODrive 线程已停止")
 
 
 def zmq_monitoring_thread_function():
@@ -94,6 +90,7 @@ def zmq_monitoring_thread_function():
     context = zmq.Context()
     subscriber = context.socket(zmq.SUB)
     subscriber.connect(f"tcp://localhost:{ch100_config['zmq_port']}")
+    subscriber.connect(f"tcp://localhost:{odrive_config['zmq_port']}")
     subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
 
     poller = zmq.Poller()
@@ -105,6 +102,8 @@ def zmq_monitoring_thread_function():
             if subscriber in socks and socks[subscriber] == zmq.POLLIN:
                 message = subscriber.recv_string()
                 data = json.loads(message)
+
+                # 将数据传递给控制层进行解析和处理
                 control_layer(data)
     except Exception as e:
         logging.error(f"Monitoring thread error: {e}")

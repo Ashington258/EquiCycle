@@ -1,80 +1,70 @@
-import zmq
-import json
-import ast
-import re
+# control_module.py
+
+import threading
+import logging
+
+# 初始化共享控制参数和锁
+control_params = {}
+control_params_lock = threading.Lock()
 
 
-# 从 JSON 文件读取设备配置
-def load_device_config(filename="src/config.json"):
-    with open(filename, "r") as f:
-        return json.load(f)
+def control_layer(data):
+    device = data.get("device")
 
+    # 处理 CH100 数据
+    if device == "ch100":
+        logging.info(f"✅ Control layer processing CH100 data: {data}")
 
-def pull_messages(config):
-    # 创建 ZMQ 上下文
-    context = zmq.Context()
+        # 提取欧拉角
+        roll = data.get("roll", 0)
+        pitch = data.get("pitch", 0)
+        yaw = data.get("yaw", 0)
+        euler_angles = {"roll": roll, "pitch": pitch, "yaw": yaw}
 
-    # 创建一个拉取器（PULL）来接收消息
-    sockets = []
-    ports = []
+        # 提取加速度
+        acceleration = data.get("acc", [0, 0, 0])  # 假设 'acc' 是加速度
+        acc_data = {"x": acceleration[0], "y": acceleration[1], "z": acceleration[2]}
 
-    # 提取 ZMQ 端口
-    for device in config.values():
-        port = device["zmq_port"]
-        socket = context.socket(zmq.PULL)
-        socket.bind(f"tcp://*:{port}")
-        sockets.append(socket)
-        ports.append(port)
+        # 提取角速度（陀螺仪数据）
+        angular_velocity = data.get("gyr", [0, 0, 0])  # 假设 'gyr' 是角速度
+        gyro_data = {
+            "x": angular_velocity[0],
+            "y": angular_velocity[1],
+            "z": angular_velocity[2],
+        }
 
-    imu_data = {}
-    motor_speed = None
+        # 保存数据到控制参数，供控制算法使用
+        with control_params_lock:
+            control_params["euler_angles"] = euler_angles
+            control_params["acceleration"] = acc_data
+            control_params["angular_velocity"] = gyro_data
 
-    try:
-        while True:
-            # 接收消息
-            for socket in sockets:
-                try:
-                    message = socket.recv_string(flags=zmq.NOBLOCK)  # 非阻塞接收
-                    port = (
-                        socket.getsockopt(zmq.LAST_ENDPOINT).decode().split(":")[-1]
-                    )  # 获取端口
+        logging.info(
+            f"✨Extracted CH100 Data -> Euler Angles: {euler_angles}, Acceleration: {acc_data}, Angular Velocity: {gyro_data}"
+        )
 
-                    # 解析消息
-                    if port == "5557":  # ch100 IMU 数据
-                        # 使用正则表达式提取帧数据
-                        match = re.search(r"已发布帧: (.+)", message)
-                        if match:
-                            frame_data = ast.literal_eval(match.group(1))
-                            imu_data["acc"] = frame_data["acc"]
-                            imu_data["gyr"] = frame_data["gyr"]
-                            imu_data["roll"] = frame_data["roll"]
-                            imu_data["pitch"] = frame_data["pitch"]
-                            imu_data["yaw"] = frame_data["yaw"]
-                            print(f"🎃IMU 数据: {imu_data}")
+    # 处理 ODrive 数据
+    elif device == "odrive":
+        logging.info(f"✅ Control layer processing ODrive data: {data}")
 
-                    elif port == "5558":  # odrive 电机转速
-                        # 使用正则表达式提取电机转速
-                        match = re.search(
-                            r"已发布 ODrive 反馈: ([\d.-]+) ([\d.-]+)", message
-                        )
-                        if match:
-                            motor_speed = float(
-                                match.group(1)
-                            )  # 假设第一个数字是电机转速
-                            print(f"🎈电机转速: {motor_speed}")
+        # 提取电机位置和电机速度
+        feedback = data.get("feedback", "")
+        if feedback:
+            feedback_values = feedback.split()
+            motor_position = float(feedback_values[0])  # 提取电机位置
+            motor_speed = float(feedback_values[1])  # 提取电机速度
+        else:
+            motor_position = 0.0
+            motor_speed = 0.0
 
-                except zmq.Again:
-                    # 没有消息可接收，继续循环
-                    continue
+        # 保存电机位置和速度到控制参数
+        with control_params_lock:
+            control_params["motor_position"] = motor_position
+            control_params["motor_speed"] = motor_speed
 
-    except KeyboardInterrupt:
-        print("停止消息接收...")
-    finally:
-        for socket in sockets:
-            socket.close()
-        context.term()
+        logging.info(
+            f"✨Extracted ODrive Data -> Motor Position: {motor_position}, Motor Speed: {motor_speed}"
+        )
 
-
-if __name__ == "__main__":
-    config = load_device_config()  # 读取设备配置
-    pull_messages(config)  # 拉取消息
+    else:
+        logging.warning(f"Unknown device data: {data}")
