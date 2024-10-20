@@ -8,5 +8,8 @@
         "port": "COM24",
         "baudrate": 460800,
         "zmq_port": 5556
+    },
+    "monitoring": {
+        "zmq_port": 5555
     }
 }

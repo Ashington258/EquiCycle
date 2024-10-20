@@ -2,12 +2,13 @@ import threading
 import time
 import json
 import logging
+import zmq
 from self_check.self_check import self_check
 from ch100_protocol.ch100_protocol import CH100Device
 from odrive_protocol.odrive_protocol import ODriveAsciiProtocol
 from ZMQ_Publisher.publisher import ZMQPublisher
 
-# 配置日志
+# Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(threadName)s] %(levelname)s: %(message)s"
 )
@@ -20,82 +21,123 @@ def load_config(file_path="src/config.json"):
 
 config = load_config()
 
-# 设备配置
-ch100_port = config["ch100"]["port"]
-ch100_baudrate = config["ch100"]["baudrate"]
-ch100_zmq_port = config["ch100"]["zmq_port"]
-odrive_port = config["odrive"]["port"]
-odrive_baudrate = config["odrive"]["baudrate"]
-odrive_zmq_port = config["odrive"]["zmq_port"]
+# Device configuration
+ch100_config = config["ch100"]
+odrive_config = config["odrive"]
 
-# 全局停止事件
+# Global stop event
 stop_event = threading.Event()
 
+# Shared control parameters
+control_params = {}
+control_params_lock = threading.Lock()
 
-def run_ch100_process():
-    logging.info("CH100 线程启动")
-    ch100_device = CH100Device(port=ch100_port, baudrate=ch100_baudrate)
+
+def control_layer(data):
+    logging.info(f"✅ Control layer processing data: {data}")
+
+
+def setup_publisher(port):
+    publisher = ZMQPublisher(port=port)
+    return publisher
+
+
+def ch100_thread_function():
+    logging.info("Starting CH100 thread")
+    ch100_device = CH100Device(
+        port=ch100_config["port"], baudrate=ch100_config["baudrate"]
+    )
     ch100_device.open()
-    publisher = ZMQPublisher(port=ch100_zmq_port)
+    publisher = setup_publisher(ch100_config["zmq_port"])
 
     try:
         while not stop_event.is_set():
             frames = ch100_device.read_and_parse()
             for frame in frames:
                 publisher.send_json(frame)
-                logging.info(f"已发布帧: {frame}")
+                logging.debug(f"Published CH100 frame: {frame}")
     except Exception as e:
-        logging.error(f"CH100 进程发生错误: {e}")
+        logging.error(f"CH100 thread error: {e}")
     finally:
         ch100_device.close()
         publisher.close()
-        logging.info("CH100 进程已终止")
+        logging.info("CH100 thread stopped")
 
 
-def run_odrive_process():
-    logging.info("ODrive 线程启动")
-    odrive = ODriveAsciiProtocol(port=odrive_port, baudrate=odrive_baudrate)
-    publisher = ZMQPublisher(port=odrive_zmq_port)
+def odrive_thread_function():
+    logging.info("Starting ODrive thread")
+    odrive = ODriveAsciiProtocol(
+        port=odrive_config["port"], baudrate=odrive_config["baudrate"]
+    )
+    publisher = setup_publisher(odrive_config["zmq_port"])
 
     try:
         while not stop_event.is_set():
             try:
-                odrive.motor_velocity(0, 8)
+                with control_params_lock:
+                    motor_speed = control_params.get("motor_speed", 8)
+                odrive.motor_velocity(0, motor_speed)
                 feedback = odrive.request_feedback(0)
                 publisher.send_string(f"motor_speed {feedback}")
-                logging.info(f"已发布 ODrive 反馈: {feedback}")
+                logging.debug(f"Published ODrive feedback: {feedback}")
+                time.sleep(0.001)  # Adjusted for efficient cycling
             except Exception as e:
-                logging.error(f"ODrive 进程发生错误: {e}")
-                break
-    except Exception as e:
-        logging.error(f"ODrive 进程发生错误: {e}")
+                logging.error(f"ODrive thread error: {e}")
     finally:
         odrive.close()
         publisher.close()
-        logging.info("ODrive 进程已终止")
+        logging.info("ODrive thread stopped")
+
+
+def zmq_monitoring_thread_function():
+    logging.info("Starting monitoring thread")
+    context = zmq.Context()
+    subscriber = context.socket(zmq.SUB)
+    subscriber.connect(f"tcp://localhost:{ch100_config['zmq_port']}")
+    subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
+
+    poller = zmq.Poller()
+    poller.register(subscriber, zmq.POLLIN)
+
+    try:
+        while not stop_event.is_set():
+            socks = dict(poller.poll(100))
+            if subscriber in socks and socks[subscriber] == zmq.POLLIN:
+                message = subscriber.recv_string()
+                data = json.loads(message)
+                control_layer(data)
+    except Exception as e:
+        logging.error(f"Monitoring thread error: {e}")
+    finally:
+        subscriber.close()
+        context.term()
+        logging.info("Monitoring thread stopped")
 
 
 def main():
-
     self_check("ch100", "odrive")
 
-    ch100_thread = threading.Thread(target=run_ch100_process, name="CH100Thread")
-    odrive_thread = threading.Thread(target=run_odrive_process, name="ODriveThread")
+    threads = [
+        threading.Thread(target=ch100_thread_function, name="CH100Thread"),
+        threading.Thread(target=odrive_thread_function, name="ODriveThread"),
+        threading.Thread(
+            target=zmq_monitoring_thread_function, name="MonitoringThread"
+        ),
+    ]
 
-    ch100_thread.start()
-    odrive_thread.start()
+    for thread in threads:
+        thread.start()
 
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        logging.info("主线程被用户中断")
+        logging.info("Main thread interrupted by user")
         stop_event.set()
     finally:
-        ch100_thread.join()
-        logging.info("CH100 线程已结束")
-        odrive_thread.join()
-        logging.info("ODrive 线程已结束")
+        for thread in threads:
+            thread.join()
+        logging.info("All threads have stopped")
 
 
 if __name__ == "__main__":
