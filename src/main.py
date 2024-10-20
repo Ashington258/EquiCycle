@@ -9,7 +9,7 @@ from odrive_protocol.odrive_protocol import ODriveAsciiProtocol
 from ZMQ_Publisher.publisher import ZMQPublisher
 from balance_control.balance_control import (
     control_layer,
-)  # 导入控制模块中的 control_layer 函数
+)  # Import the control_layer function
 
 # Configure logging
 logging.basicConfig(
@@ -60,32 +60,37 @@ def ch100_thread_function():
         logging.info("CH100 thread stopped")
 
 
-def odrive_thread_function():
-    logging.info("启动 ODrive 线程")
-    odrive = ODriveAsciiProtocol(
-        port=odrive_config["port"], baudrate=odrive_config["baudrate"]
-    )
+def odrive_thread_function(odrive_instance):
+    """
+    ODrive thread to handle communication with the ODrive motor controller.
+    :param odrive_instance: The instance of ODriveAsciiProtocol for communication
+    """
+    logging.info("Starting ODrive thread")
     publisher = setup_publisher(odrive_config["zmq_port"])
 
     try:
         while not stop_event.is_set():
             try:
-                feedback = odrive.request_feedback(0)
+                feedback = odrive_instance.request_feedback(0)
                 data = {
-                    "device": "odrive",  # 添加设备标识符
+                    "device": "odrive",  # Add device identifier
                     "feedback": feedback,
                 }
                 publisher.send_json(data)
-                logging.info(f"已发布 ODrive 反馈: {data}")
+                logging.info(f"Published ODrive feedback: {data}")
             except Exception as e:
-                logging.error(f"ODrive 线程错误: {e}")
+                logging.error(f"ODrive thread error: {e}")
     finally:
-        odrive.close()
+        odrive_instance.close()
         publisher.close()
-        logging.info("ODrive 线程已停止")
+        logging.info("ODrive thread stopped")
 
 
-def zmq_monitoring_thread_function():
+def zmq_monitoring_thread_function(odrive_instance):
+    """
+    Monitoring thread to receive data from ZMQ and pass it to the control layer.
+    :param odrive_instance: The instance of ODriveAsciiProtocol used for control commands
+    """
     logging.info("Starting monitoring thread")
     context = zmq.Context()
     subscriber = context.socket(zmq.SUB)
@@ -103,8 +108,8 @@ def zmq_monitoring_thread_function():
                 message = subscriber.recv_string()
                 data = json.loads(message)
 
-                # 将数据传递给控制层进行解析和处理
-                control_layer(data)
+                # Pass data to the control layer along with the odrive_instance
+                control_layer(data, odrive_instance)
     except Exception as e:
         logging.error(f"Monitoring thread error: {e}")
     finally:
@@ -114,16 +119,29 @@ def zmq_monitoring_thread_function():
 
 
 def main():
+    # Perform system self-check before starting threads
     self_check("ch100", "odrive")
 
+    # Initialize ODrive instance
+    odrive_instance = ODriveAsciiProtocol(
+        port=odrive_config["port"], baudrate=odrive_config["baudrate"]
+    )
+
+    # Create threads with the appropriate functions and arguments
     threads = [
         threading.Thread(target=ch100_thread_function, name="CH100Thread"),
-        threading.Thread(target=odrive_thread_function, name="ODriveThread"),
         threading.Thread(
-            target=zmq_monitoring_thread_function, name="MonitoringThread"
+            target=odrive_thread_function, args=(odrive_instance,), name="ODriveThread"
+        ),
+        # 此处传入实例给zmq_monitoring_thread_function(用于控制层)是为了调用实例方法
+        threading.Thread(
+            target=zmq_monitoring_thread_function,
+            args=(odrive_instance,),
+            name="MonitoringThread",
         ),
     ]
 
+    # Start all threads
     for thread in threads:
         thread.start()
 
@@ -134,6 +152,7 @@ def main():
         logging.info("Main thread interrupted by user")
         stop_event.set()
     finally:
+        # Wait for all threads to finish
         for thread in threads:
             thread.join()
         logging.info("All threads have stopped")
