@@ -1,20 +1,35 @@
+import json
 import socket
+import time
 
 
-def check_port(port):
+def load_config_from_json(file_path):
+    with open(file_path, "r") as file:
+        data = json.load(file)
+    return data
+
+
+def check_zmq_port_availability(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        # 设置超时时间
-        s.settimeout(1)
-        # 尝试连接本地的指定端口
-        result = s.connect_ex(("127.0.0.1", port))
-        # 如果返回值为0，则端口被占用
-        return result == 0
+        s.settimeout(1)  # 设置超时时间为1秒
+        try:
+            s.bind(("", port))  # 尝试绑定到端口
+            return True
+        except socket.error:
+            return False
+
+
+def main():
+    json_file_path = "src/config.json"  # JSON文件路径
+    config = load_config_from_json(json_file_path)
+
+    for device, settings in config.items():
+        zmq_port = settings["zmq_port"]
+        if check_zmq_port_availability(zmq_port):
+            print(f"ZMQ port {zmq_port} for {device} is available.")
+        else:
+            print(f"ZMQ port {zmq_port} for {device} is not available.")
 
 
 if __name__ == "__main__":
-    ports_to_check = [5555, 5556]
-    for port in ports_to_check:
-        if check_port(port):
-            print(f"端口 {port} 已被占用")
-        else:
-            print(f"端口 {port} 可用")
+    main()
