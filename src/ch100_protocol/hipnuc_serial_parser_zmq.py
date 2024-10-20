@@ -127,7 +127,7 @@ if __name__ == "__main__":
     try:
         while True:
             # Read data from serial port
-            data = ser.read(1024)  # Read up to 1024 bytes
+            data = ser.read(82)  # Read up to 1024 bytes
             if data:
                 frames = decoder.parse(data)
                 for frame in frames:
