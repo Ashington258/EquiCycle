@@ -23,8 +23,10 @@ config = load_config()
 # 设备配置
 ch100_port = config["ch100"]["port"]
 ch100_baudrate = config["ch100"]["baudrate"]
+ch100_zmq_port = config["ch100"]["zmq_port"]
 odrive_port = config["odrive"]["port"]
 odrive_baudrate = config["odrive"]["baudrate"]
+odrive_zmq_port = config["odrive"]["zmq_port"]
 
 # 全局停止事件
 stop_event = threading.Event()
@@ -34,7 +36,7 @@ def run_ch100_process():
     logging.info("CH100 线程启动")
     ch100_device = CH100Device(port=ch100_port, baudrate=ch100_baudrate)
     ch100_device.open()
-    publisher = ZMQPublisher(port=5555)
+    publisher = ZMQPublisher(port=ch100_zmq_port)
 
     try:
         while not stop_event.is_set():
@@ -53,7 +55,7 @@ def run_ch100_process():
 def run_odrive_process():
     logging.info("ODrive 线程启动")
     odrive = ODriveAsciiProtocol(port=odrive_port, baudrate=odrive_baudrate)
-    publisher = ZMQPublisher(port=5556)
+    publisher = ZMQPublisher(port=odrive_zmq_port)
 
     try:
         while not stop_event.is_set():

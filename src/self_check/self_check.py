@@ -68,6 +68,7 @@ def self_check(*device_names):
     device_config = load_device_config()
 
     # 检查指定的设备端口是否正常
+    zmq_ports = []
     for device_name in device_names:
         if device_name not in device_config:
             logging.error(f"未知设备名称: {device_name}")
@@ -75,6 +76,7 @@ def self_check(*device_names):
 
         port = device_config[device_name]["port"]
         baudrate = device_config[device_name]["baudrate"]
+        zmq_ports.append(device_config[device_name]["zmq_port"])  # 收集 ZMQ 端口
 
         try:
             # 检查设备端口
@@ -87,8 +89,8 @@ def self_check(*device_names):
             logging.error(f"{device_name.upper()} 自检失败: {e}")
             sys.exit(1)
 
-    # 检查 ZMQ 端口 5555 和 5556 是否被占用
-    check_and_release_ports([5555, 5556])
+    # 检查 ZMQ 端口是否被占用
+    check_and_release_ports(zmq_ports)
 
 
 # 示例调用
