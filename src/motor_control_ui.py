@@ -73,8 +73,8 @@ class MotorControlUI(QWidget):
         # Motor Velocity Controls
         velocity_layout = QVBoxLayout()
         self.velocity_slider = QSlider(Qt.Horizontal, self)
-        self.velocity_slider.setMinimum(-200)
-        self.velocity_slider.setMaximum(200)  # Example range for motor velocity
+        self.velocity_slider.setMinimum(-350)
+        self.velocity_slider.setMaximum(350)  # Example range for motor velocity
         self.velocity_slider.setValue(0)
         self.velocity_slider.valueChanged.connect(self.slider_velocity_changed)
         velocity_layout.addWidget(QLabel("Motor Velocity (turns/s):"))
