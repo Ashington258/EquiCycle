@@ -62,10 +62,10 @@ def ch100_thread_function():
 
 def odrive_thread_function(odrive_instance):
     """
-    ODrive thread to handle communication with the ODrive motor controller.
-    :param odrive_instance: The instance of ODriveAsciiProtocol for communication
+    ODrive 线程用于处理与 ODrive 电机控制器的通信。
+    :param odrive_instance: 用于通信的 ODriveAsciiProtocol 实例
     """
-    logging.info("Starting ODrive thread")
+    logging.info("启动 ODrive 线程")
     publisher = setup_publisher(odrive_config["zmq_port"])
 
     try:
@@ -73,17 +73,18 @@ def odrive_thread_function(odrive_instance):
             try:
                 feedback = odrive_instance.request_feedback(0)
                 data = {
-                    "device": "odrive",  # Add device identifier
+                    "device": "odrive",  # 添加设备标识符
                     "feedback": feedback,
                 }
                 publisher.send_json(data)
-                logging.info(f"Published ODrive feedback: {data}")
+                logging.info(f"发布 ODrive 反馈: {data}")
             except Exception as e:
-                logging.error(f"ODrive thread error: {e}")
+                logging.error(f"ODrive 线程错误: {e}")
+            time.sleep(0.01)  # 限制请求频率为每10毫秒一次
     finally:
         odrive_instance.close()
         publisher.close()
-        logging.info("ODrive thread stopped")
+        logging.info("ODrive 线程停止")
 
 
 def zmq_monitoring_thread_function(odrive_instance):
