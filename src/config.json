@@ -1,0 +1,15 @@
+{
+    "ch100": {
+        "port": "COM22",
+        "baudrate": 460800,
+        "zmq_port": 5555
+    },
+    "odrive": {
+        "port": "COM24",
+        "baudrate": 460800,
+        "zmq_port": 5556
+    },
+    "monitoring": {
+        "zmq_port": 5555
+    }
+}
