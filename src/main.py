@@ -2,16 +2,13 @@ import threading
 import time
 import json
 import logging
-import zmq
+import queue
 from self_check.self_check import self_check
 from ch100_protocol.ch100_protocol import CH100Device
 from odrive_protocol.odrive_protocol import ODriveAsciiProtocol
-from ZMQ_Publisher.publisher import ZMQPublisher
-from balance_control.balance_control import (
-    control_layer,
-)  # Import the control_layer function
+from balance_control.balance_control import control_layer  # 导入 control_layer 函数
 
-# Configure logging
+# 配置日志记录
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(threadName)s] %(levelname)s: %(message)s"
 )
@@ -24,49 +21,46 @@ def load_config(file_path="src/config.json"):
 
 config = load_config()
 
-# Device configuration
+# 设备配置
 ch100_config = config["ch100"]
 odrive_config = config["odrive"]
 
-# Global stop event
+# 全局停止事件
 stop_event = threading.Event()
 
-
-def setup_publisher(port):
-    publisher = ZMQPublisher(port=port)
-    return publisher
+# 用于线程间通信的队列
+data_queue = queue.Queue()
 
 
-def ch100_thread_function():
-    logging.info("Starting CH100 thread")
+def ch100_thread_function(data_queue):
+    """
+    CH100 线程从 CH100 串口设备读取数据并将其放入队列中。
+    """
+    logging.info("启动 CH100 线程")
     ch100_device = CH100Device(
         port=ch100_config["port"], baudrate=ch100_config["baudrate"]
     )
     ch100_device.open()
-    publisher = setup_publisher(ch100_config["zmq_port"])
 
     try:
         while not stop_event.is_set():
             frames = ch100_device.read_and_parse()
             for frame in frames:
-                frame["device"] = "ch100"  # Add device identifier
-                publisher.send_json(frame)
-                logging.debug(f"Published CH100 frame: {frame}")
+                frame["device"] = "ch100"  # 添加设备标识符
+                data_queue.put(frame)  # 将帧放入队列
+                logging.debug(f"已将 CH100 帧添加到队列: {frame}")
     except Exception as e:
-        logging.error(f"CH100 thread error: {e}")
+        logging.error(f"CH100 线程错误: {e}")
     finally:
         ch100_device.close()
-        publisher.close()
-        logging.info("CH100 thread stopped")
+        logging.info("CH100 线程已停止")
 
 
-def odrive_thread_function(odrive_instance):
+def odrive_thread_function(odrive_instance, data_queue):
     """
-    ODrive 线程用于处理与 ODrive 电机控制器的通信。
-    :param odrive_instance: 用于通信的 ODriveAsciiProtocol 实例
+    ODrive 线程从 ODrive 电机控制器读取反馈并将其放入队列中。
     """
     logging.info("启动 ODrive 线程")
-    publisher = setup_publisher(odrive_config["zmq_port"])
 
     try:
         while not stop_event.is_set():
@@ -76,73 +70,64 @@ def odrive_thread_function(odrive_instance):
                     "device": "odrive",  # 添加设备标识符
                     "feedback": feedback,
                 }
-                publisher.send_json(data)
-                logging.info(f"发布 ODrive 反馈: {data}")
+                data_queue.put(data)  # 将反馈放入队列
+                logging.info(f"已将 ODrive 反馈添加到队列: {data}")
             except Exception as e:
                 logging.error(f"ODrive 线程错误: {e}")
-            time.sleep(0.01)  # 限制请求频率为每10毫秒一次
+            time.sleep(0.01)  # 限制请求速率为 10ms
     finally:
         odrive_instance.close()
-        publisher.close()
-        logging.info("ODrive 线程停止")
+        logging.info("ODrive 线程已停止")
 
 
-def zmq_monitoring_thread_function(odrive_instance):
+def control_thread_function(odrive_instance, data_queue):
     """
-    Monitoring thread to receive data from ZMQ and pass it to the control layer.
-    :param odrive_instance: The instance of ODriveAsciiProtocol used for control commands
+    控制线程从队列中读取数据并将其传递给控制层进行处理。
     """
-    logging.info("Starting monitoring thread")
-    context = zmq.Context()
-    subscriber = context.socket(zmq.SUB)
-    subscriber.connect(f"tcp://localhost:{ch100_config['zmq_port']}")
-    subscriber.connect(f"tcp://localhost:{odrive_config['zmq_port']}")
-    subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
-
-    poller = zmq.Poller()
-    poller.register(subscriber, zmq.POLLIN)
+    logging.info("启动控制线程")
 
     try:
         while not stop_event.is_set():
-            socks = dict(poller.poll(100))
-            if subscriber in socks and socks[subscriber] == zmq.POLLIN:
-                message = subscriber.recv_string()
-                data = json.loads(message)
-
-                # Pass data to the control layer along with the odrive_instance
-                control_layer(data, odrive_instance)
-    except Exception as e:
-        logging.error(f"Monitoring thread error: {e}")
+            try:
+                # 从队列获取数据（在有项目可用时阻塞）
+                data = data_queue.get(timeout=1)
+                control_layer(data, odrive_instance)  # 将数据传递给控制层
+                logging.info(f"已处理数据: {data}")
+            except queue.Empty:
+                pass  # 超时发生，继续循环
+            except Exception as e:
+                logging.error(f"控制线程错误: {e}")
     finally:
-        subscriber.close()
-        context.term()
-        logging.info("Monitoring thread stopped")
+        logging.info("控制线程已停止")
 
 
 def main():
-    # Perform system self-check before starting threads
+    # 在启动线程之前执行系统自检
     self_check("ch100", "odrive")
 
-    # Initialize ODrive instance
+    # 初始化 ODrive 实例
     odrive_instance = ODriveAsciiProtocol(
         port=odrive_config["port"], baudrate=odrive_config["baudrate"]
     )
 
-    # Create threads with the appropriate functions and arguments
+    # 创建线程
     threads = [
-        threading.Thread(target=ch100_thread_function, name="CH100Thread"),
         threading.Thread(
-            target=odrive_thread_function, args=(odrive_instance,), name="ODriveThread"
+            target=ch100_thread_function, args=(data_queue,), name="CH100Thread"
         ),
-        # 此处传入实例给zmq_monitoring_thread_function(用于控制层)是为了调用实例方法
         threading.Thread(
-            target=zmq_monitoring_thread_function,
-            args=(odrive_instance,),
-            name="MonitoringThread",
+            target=odrive_thread_function,
+            args=(odrive_instance, data_queue),
+            name="ODriveThread",
+        ),
+        threading.Thread(
+            target=control_thread_function,
+            args=(odrive_instance, data_queue),
+            name="ControlThread",
         ),
     ]
 
-    # Start all threads
+    # 启动所有线程
     for thread in threads:
         thread.start()
 
@@ -150,13 +135,13 @@ def main():
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        logging.info("Main thread interrupted by user")
+        logging.info("主线程被用户中断")
         stop_event.set()
     finally:
-        # Wait for all threads to finish
+        # 等待所有线程完成
         for thread in threads:
             thread.join()
-        logging.info("All threads have stopped")
+        logging.info("所有线程已停止")
 
 
 if __name__ == "__main__":
