@@ -1,0 +1,11 @@
+
+# If you have not already installed odrivetool (pip install --upgrade odrive) please do so now.
+odrive
+pyserial
+keyboard
+PyQt5
+numpy
+matplotlib
+pyzmq
+rich
+psutil
