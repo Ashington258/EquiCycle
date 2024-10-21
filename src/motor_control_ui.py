@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QLineEdit,
     QSlider,
+    QComboBox,
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPalette, QColor
@@ -20,6 +21,7 @@ class MotorControlUI(QWidget):
         super().__init__()
         self.init_ui()
         self.odrive = None
+        self.current_motor = 0  # Default motor index
 
     def init_ui(self):
         self.setWindowTitle("Motor Control")
@@ -58,12 +60,22 @@ class MotorControlUI(QWidget):
 
         layout.addLayout(connection_layout)
 
+        # Motor Selection
+        motor_selection_layout = QHBoxLayout()
+        self.motor_selector = QComboBox(self)
+        self.motor_selector.addItems(["Motor 0", "Motor 1"])
+        self.motor_selector.currentIndexChanged.connect(self.change_motor)
+        motor_selection_layout.addWidget(QLabel("Select Motor:"))
+        motor_selection_layout.addWidget(self.motor_selector)
+
+        layout.addLayout(motor_selection_layout)
+
         # Motor Position Controls
         position_layout = QVBoxLayout()
         self.position_slider = QSlider(Qt.Horizontal, self)
         self.position_slider.setMinimum(0)
         self.position_slider.setMaximum(1000)  # Example range for motor position
-        self.position_slider.setValue(000)
+        self.position_slider.setValue(0)
         self.position_slider.valueChanged.connect(self.slider_position_changed)
         position_layout.addWidget(QLabel("Motor Position (turns):"))
         position_layout.addWidget(self.position_slider)
@@ -107,26 +119,35 @@ class MotorControlUI(QWidget):
             except Exception as e:
                 self.feedback_label.setText(f"Failed to connect: {e}")
 
+    def change_motor(self, index):
+        self.current_motor = index
+
     def slider_position_changed(self, value):
         if self.odrive:
             position = value / 100.0  # Convert to a float range if necessary
-            self.odrive.motor_position(0, position)
-            self.feedback_label.setText(f"Motor position set to {position}")
+            self.odrive.motor_position(self.current_motor, position)
+            self.feedback_label.setText(
+                f"Motor {self.current_motor} position set to {position}"
+            )
         else:
             self.feedback_label.setText("ODrive not connected")
 
     def slider_velocity_changed(self, value):
         if self.odrive:
             velocity = value / 10.0  # Convert to a suitable velocity range
-            self.odrive.motor_velocity(0, velocity)
-            self.feedback_label.setText(f"Motor velocity set to {velocity}")
+            self.odrive.motor_velocity(self.current_motor, velocity)
+            self.feedback_label.setText(
+                f"Motor {self.current_motor} velocity set to {velocity}"
+            )
         else:
             self.feedback_label.setText("ODrive not connected")
 
     def update_watchdog(self):
         if self.odrive:
-            self.odrive.update_watchdog(0)
-            self.feedback_label.setText("Watchdog updated")
+            self.odrive.update_watchdog(self.current_motor)
+            self.feedback_label.setText(
+                f"Watchdog updated for Motor {self.current_motor}"
+            )
         else:
             self.feedback_label.setText("ODrive not connected")
 
