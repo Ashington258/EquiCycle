@@ -118,6 +118,7 @@ def adjust_motor_speed(odrive_instance):
         control_params["motor_speed"] = new_motor_speed
 
     # Send the updated motor speed to ODrive
+    # bug 发送指令占用接口资源，导致
     # odrive_instance.motor_velocity(0, new_motor_speed, 0)
 
     logging.info(
