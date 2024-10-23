@@ -21,13 +21,19 @@ class PWM:
         high_time = self.period * (self.duty_cycle / 100.0)
         low_time = self.period * (1 - (self.duty_cycle / 100.0))
 
-        # 使用较小的时间片提高精度
+        # 使用高精度计时
         try:
             while True:
+                start_time = time.perf_counter()
+
                 GPIO.output(self.pin, GPIO.HIGH)  # 设置引脚高电平
-                time.sleep(high_time)  # 高电平持续时间
+                while (time.perf_counter() - start_time) < high_time:
+                    pass  # 主动等待高电平持续时间
+
                 GPIO.output(self.pin, GPIO.LOW)  # 设置引脚低电平
-                time.sleep(low_time)  # 低电平持续时间
+                start_time = time.perf_counter()
+                while (time.perf_counter() - start_time) < low_time:
+                    pass  # 主动等待低电平持续时间
         except KeyboardInterrupt:
             self.stop()
 
@@ -41,7 +47,7 @@ class PWM:
 
 # 示例使用
 if __name__ == "__main__":
-    pwm = PWM(pin=12, frequency=100)  # 使用引脚12，频率1000Hz
+    pwm = PWM(pin=12, frequency=1000)  # 使用引脚12，频率1000Hz
     try:
         pwm.start(duty_cycle=80)  # 设置占空比为80%
     except KeyboardInterrupt:
