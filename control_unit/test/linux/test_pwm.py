@@ -1,29 +1,25 @@
 import Jetson.GPIO as GPIO
 import time
 
-# 设置引脚编号模式
-GPIO.setmode(GPIO.BCM)
-
-# 设置引脚12为输出模式
-pwm_pin = 12
-GPIO.setup(pwm_pin, GPIO.OUT)
+# 设置GPIO引脚
+PWM_PIN = 32
+GPIO.setmode(GPIO.BOARD)
+GPIO.setup(PWM_PIN, GPIO.OUT)
 
 # 创建PWM对象，频率为100Hz
-pwm = GPIO.PWM(pwm_pin, 100)
-
-# 启动PWM，初始占空比为50%
-pwm.start(50)
+pwm = GPIO.PWM(PWM_PIN, 1000)
+pwm.start(0)  # 初始占空比为0%
 
 try:
     while True:
-        # 可以在这里添加其他逻辑，当前占空比为50%
-        time.sleep(1)  # 每秒循环一次
-
+        for duty_cycle in range(0, 101, 5):  # 从0%到100%
+            pwm.ChangeDutyCycle(duty_cycle)
+            time.sleep(0.1)
+        for duty_cycle in range(100, -1, -5):  # 从100%到0%
+            pwm.ChangeDutyCycle(duty_cycle)
+            time.sleep(0.1)
 except KeyboardInterrupt:
-    pass  # 捕获Ctrl+C以退出
-
-# 停止PWM信号
-pwm.stop()
-
-# 清理引脚设置
-GPIO.cleanup()
+    pass
+finally:
+    pwm.stop()
+    GPIO.cleanup()
