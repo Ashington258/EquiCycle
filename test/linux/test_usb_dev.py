@@ -1,29 +1,54 @@
-import usb.core
-import usb.util
+import subprocess
+import re
 
 
-def list_usb_devices():
-    # 查找所有USB设备
-    devices = usb.core.find(find_all=True)
+def check_usbutils():
+    """检查并安装 usbutils"""
+    try:
+        subprocess.run(
+            ["lsusb"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+    except subprocess.CalledProcessError:
+        print("lsusb 命令未找到，正在安装 usbutils...")
+        subprocess.run(["sudo", "apt", "update"], check=True)
+        subprocess.run(["sudo", "apt", "install", "-y", "usbutils"], check=True)
 
-    # 遍历并打印每个设备的信息
-    for device in devices:
-        try:
-            print(f"Device: {device}")
-            print(f"  ID: {device.idVendor}:{device.idProduct}")
-            print(
-                f"  Manufacturer: {usb.util.get_string(device, device.iManufacturer)}"
-            )
-            print(f"  Product: {usb.util.get_string(device, device.iProduct)}")
-            print(
-                f"  Serial Number: {usb.util.get_string(device, device.iSerialNumber)}"
-            )
-            print(f"  Bus Number: {device.bus}")
-            print(f"  Device Address: {device.address}")
-            print("-" * 40)
-        except Exception as e:
-            print(f"Error retrieving info for device: {e}")
+
+def get_usb_devices():
+    """获取 USB 设备信息"""
+    devices = []
+    try:
+        result = subprocess.run(
+            ["lsusb"], check=True, stdout=subprocess.PIPE, text=True
+        )
+        lines = result.stdout.strip().split("\n")
+
+        for line in lines:
+            # 过滤出常见的设备类型
+            if re.search(r"Input|Mouse|Keyboard|CH340|Serial", line, re.IGNORECASE):
+                devices.append(line)
+    except subprocess.CalledProcessError as e:
+        print(f"获取 USB 设备信息失败: {e}")
+
+    return devices
+
+
+def main():
+    check_usbutils()
+    print("连接的 USB 设备信息（过滤后的）：")
+    print("=========================")
+
+    usb_devices = get_usb_devices()
+
+    if not usb_devices:
+        print("未找到符合条件的 USB 设备。")
+    else:
+        for line in usb_devices:
+            print(line)
+
+    print("=========================")
+    print("USB 设备信息获取完成。")
 
 
 if __name__ == "__main__":
-    list_usb_devices()
+    main()
