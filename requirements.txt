@@ -9,3 +9,4 @@ matplotlib
 pyzmq
 rich
 psutil
+pyusb
