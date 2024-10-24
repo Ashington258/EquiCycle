@@ -57,3 +57,5 @@ CMakePresets.json
 cmake_install.cmake
 compile_commands.json
 
+# 忽略mp4文件
+*.mp4
