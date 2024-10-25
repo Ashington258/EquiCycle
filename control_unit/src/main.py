@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 
 
-def load_config(file_path="src/config.json"):
+def load_config(file_path="control_unit/src/config.json"):
     with open(file_path, "r") as f:
         return json.load(f)
 
