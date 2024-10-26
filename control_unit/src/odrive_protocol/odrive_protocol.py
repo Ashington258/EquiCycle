@@ -48,7 +48,7 @@ class ODriveAsciiProtocol:
         self.send_command(command)
 
     def motor_velocity(self, motor: int, velocity: float, torque_ff: float = 0.0):
-        command = f"v {motor} {velocity} {torque_ff}"
+        command = f"v {motor} {velocity}"
         self.send_command(command)
 
     def motor_current(self, motor: int, torque: float):
