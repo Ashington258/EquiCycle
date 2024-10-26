@@ -3,9 +3,10 @@
 odrive
 pyserial
 keyboard
-PyQt5
+# PyQt5
 numpy
 matplotlib
 pyzmq
 rich
 psutil
+pyusb
