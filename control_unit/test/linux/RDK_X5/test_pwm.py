@@ -1,51 +1,44 @@
+#!/usr/bin/env python3
+import sys
+import signal
+
+import Hobot.GPIO as GPIO
 import time
-import os
 
-# 定义 PWM 通道
-PWM_CHIP = '/sys/class/pwm/pwmchip0'
-PWM_CHANNEL = 'pwm0'
+def signal_handler(signal, frame):
+    sys.exit(0)
 
-# 导出 PWM 通道
-def export_pwm():
-    with open(os.path.join(PWM_CHIP, 'export'), 'w') as f:
-        f.write('0')  # 假设使用 pwm0
+# 支持PWM的管脚: 32 and 33, 在使用PWM时，必须确保该管脚没有被其他功能占用
+output_pin = 33
 
-# 设置 PWM 周期
-def set_period(period_ns):
-    with open(os.path.join(PWM_CHIP, PWM_CHANNEL, 'period'), 'w') as f:
-        f.write(str(period_ns))
+GPIO.setwarnings(False)
 
-# 设置占空比
-def set_duty_cycle(duty_cycle_ns):
-    with open(os.path.join(PWM_CHIP, PWM_CHANNEL, 'duty_cycle'), 'w') as f:
-        f.write(str(duty_cycle_ns))
+def main():
+    # Pin Setup:
+    # Board pin-numbering scheme
+    GPIO.setmode(GPIO.BOARD)
+    # 支持的频率范围： 48KHz ~ 192MHz
+    p = GPIO.PWM(output_pin, 48000)
+    # 初始占空比 25%， 先每0.25秒增加5%占空比，达到100%之后再每0.25秒减少5%占空比
+    val = 25
+    incr = 5
+    p.ChangeDutyCycle(val)
+    p.start(val)
 
-# 启用 PWM
-def enable_pwm():
-    with open(os.path.join(PWM_CHIP, PWM_CHANNEL, 'enable'), 'w') as f:
-        f.write('1')
-
-# 禁用 PWM
-def disable_pwm():
-    with open(os.path.join(PWM_CHIP, PWM_CHANNEL, 'enable'), 'w') as f:
-        f.write('0')
-
-# 主程序
-if __name__ == "__main__":
-    export_pwm()  # 导出 PWM 通道
-    time.sleep(0.1)  # 等待导出完成
-
-    period_ns = 1000000  # 设置周期为 1 秒
-    duty_cycle_ns = 500000  # 设置占空比为 50%
-
-    set_period(period_ns)  # 设置周期
-    set_duty_cycle(duty_cycle_ns)  # 设置占空比
-    enable_pwm()  # 启用 PWM
-
+    print("PWM running. Press CTRL+C to exit.")
     try:
         while True:
-            time.sleep(1)  # 保持 PWM 输出
-    except KeyboardInterrupt:
-        pass
+            time.sleep(0.25)
+            if val >= 100:
+                incr = -incr
+            if val <= 0:
+                incr = -incr
+            val += incr
+            p.ChangeDutyCycle(val)
     finally:
-        disable_pwm()  # 禁用 PWM
+        p.stop()
+        GPIO.cleanup()
+
+if __name__ == '__main__':
+    signal.signal(signal.SIGINT, signal_handler)
+    main()
