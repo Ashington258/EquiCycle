@@ -1,11 +1,11 @@
 {
     "ch100": {
-        "port": "COM22",
+        "port": "COM3",
         "baudrate": 460800,
         "zmq_port": 5555
     },
     "odrive": {
-        "port": "COM24",
+        "port": "COM46",
         "baudrate": 460800,
         "zmq_port": 5556
     },

@@ -74,7 +74,7 @@ def odrive_thread_function(odrive_instance, data_queue):
                 logging.info(f"已将 ODrive 反馈添加到队列: {data}")
             except Exception as e:
                 logging.error(f"ODrive 线程错误: {e}")
-            time.sleep(0.01)  # 限制请求速率为 10ms
+            time.sleep(0.005)  # 限制请求速率为 10ms
     finally:
         odrive_instance.close()
         logging.info("ODrive 线程已停止")
