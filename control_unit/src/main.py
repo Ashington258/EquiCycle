@@ -72,7 +72,7 @@ def odrive_thread_function(odrive_instance, data_queue):
                     "feedback": feedback,
                 }
                 data_queue.put(data)  # 将反馈放入队列
-                logging.info(f"已将 ODrive 反馈添加到队列: {data}")
+                # logging.info(f"已将 ODrive 反馈添加到队列: {data}")
             except Exception as e:
                 logging.error(f"ODrive 线程错误: {e}")
             time.sleep(0.005)  # 限制请求速率为 5ms
