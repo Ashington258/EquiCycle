@@ -10,7 +10,8 @@ from balance_control.balance_control import control_layer  # 导入 control_laye
 
 # 配置日志记录
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(threadName)s] %(levelname)s: %(message)s"
+    level=logging.WARNING,  # 修改为 WARNING 级别
+    format="%(asctime)s [%(threadName)s] %(levelname)s: %(message)s",
 )
 
 
