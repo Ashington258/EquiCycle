@@ -8,11 +8,13 @@ from ch100_protocol.ch100_protocol import CH100Device
 from odrive_protocol.odrive_protocol import ODriveAsciiProtocol
 from balance_control.balance_control import control_layer  # 导入 control_layer 函数
 
-# 配置日志记录
-logging.basicConfig(
-    level=logging.WARNING,  # 修改为 WARNING 级别
-    format="%(asctime)s [%(threadName)s] %(levelname)s: %(message)s",
-)
+# # 配置日志记录
+# logging.basicConfig(
+#     level=logging.WARNING,  # 修改为 WARNING 级别
+#     format="%(asctime)s [%(threadName)s] %(levelname)s: %(message)s",
+# )
+# 移除所有的日志处理程序，关闭日志模块
+logging.getLogger().handlers.clear()
 
 
 def load_config(file_path="control_unit/control_unit/src/config.json"):
