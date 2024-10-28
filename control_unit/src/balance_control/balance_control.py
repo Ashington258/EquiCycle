@@ -239,10 +239,10 @@ def adjust_motor_speed(odrive_instance, PIDclass):
     # if stop_flag == 1:
     #     odrive_instance.motor_velocity(1, v_back, 0)
 
-    logging.info(
-        f"🔧 Output: {stop_count}, "
-        f"New Motor Speed: {stop_flag}"
-    )
+    # logging.info(
+    #     f"🔧 Output: {stop_count}, "
+    #     f"New Motor Speed: {stop_flag}"
+    # )
 
 
 def clamp_speed(speed, min_speed, max_speed):
