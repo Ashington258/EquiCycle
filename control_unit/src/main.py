@@ -93,7 +93,7 @@ def control_thread_function(odrive_instance, data_queue):
                 # 从队列获取数据（在有项目可用时阻塞）
                 data = data_queue.get(timeout=1)
                 control_layer(data, odrive_instance)  # 将数据传递给控制层
-                logging.info(f"已处理数据: {data}")
+                # logging.info(f"已处理数据: {data}")
             except queue.Empty:
                 pass  # 超时发生，继续循环
             except Exception as e:

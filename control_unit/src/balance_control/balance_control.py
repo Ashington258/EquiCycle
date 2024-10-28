@@ -154,7 +154,7 @@ def process_ch100_data(data):
     """
     Extract and save CH100 sensor data (Euler angles, acceleration, and angular velocity).
     """
-    logging.info(f"✅ Control layer processing CH100 data: {data}")
+    # logging.info(f"✅ Control layer processing CH100 data: {data}")
 
     # Extract Euler angles
     roll = data.get("roll", 0.0)
@@ -171,14 +171,14 @@ def process_ch100_data(data):
         control_params["euler_angles"] = euler_angles
         control_params["gyro"] = gyro_data
 
-    logging.info(f"✨ Extracted CH100 Data -> Euler Angles: {euler_angles}")
+    # logging.info(f"✨ Extracted CH100 Data -> Euler Angles: {euler_angles}")
 
 
 def process_odrive_data(data):
     """
     Extract and save ODrive data (motor position and speed).
     """
-    logging.info(f"✅ Control layer processing ODrive data: {data}")
+    # logging.info(f"✅ Control layer processing ODrive data: {data}")
 
     # Extract motor position and speed
     feedback = data.get("feedback", "")
@@ -195,10 +195,10 @@ def process_odrive_data(data):
         control_params["motor_position"] = motor_position
         control_params["motor_speed"] = motor_speed
 
-    logging.info(
-        f"✨ Extracted ODrive Data -> Motor Position: {motor_position}, "
-        f"Motor Speed: {motor_speed}"
-    )
+    # logging.info(
+    #     f"✨ Extracted ODrive Data -> Motor Position: {motor_position}, "
+    #     f"Motor Speed: {motor_speed}"
+    # )
 
 CascadePIDclass = CascadedPIDController()
 
