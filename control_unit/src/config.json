@@ -1,11 +1,11 @@
 {
     "ch100": {
-        "port": "COM22",
+        "port": "/dev/ttyUSB0",
         "baudrate": 460800,
         "zmq_port": 5555
     },
     "odrive": {
-        "port": "COM24",
+        "port": "/dev/ttyACM0",
         "baudrate": 460800,
         "zmq_port": 5556
     },
