@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 
 
-def load_config(file_path="control_unit/src/config.json"):
+def load_config(file_path="control_unit/control_unit/src/config.json"):
     with open(file_path, "r") as f:
         return json.load(f)
 
@@ -74,7 +74,7 @@ def odrive_thread_function(odrive_instance, data_queue):
                 logging.info(f"已将 ODrive 反馈添加到队列: {data}")
             except Exception as e:
                 logging.error(f"ODrive 线程错误: {e}")
-            time.sleep(0.005)  # 限制请求速率为 10ms
+            time.sleep(0.005)  # 限制请求速率为 5ms
     finally:
         odrive_instance.close()
         logging.info("ODrive 线程已停止")
