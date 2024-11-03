@@ -11,10 +11,8 @@ import matplotlib.pyplot as plt
 class Config:
     """配置参数类"""
 
-    MODEL_PATH = (
-        "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/model/best.pt"
-    )
-    INPUT_SOURCE = "2.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
+    MODEL_PATH = "analysis/model/100_LaneSeg.pt"
+    INPUT_SOURCE = "dataset/image/straight_line.jpg"  # 支持图片路径、视频路径、摄像头ID或URL
     CONF_THRESH = 0.25
     IMG_SIZE = 1280
     ROI_TOP_LEFT_RATIO = (0, 0.35)
