@@ -57,10 +57,8 @@ CMakePresets.json
 cmake_install.cmake
 compile_commands.json
 
-cache.md
-
-# 忽略 python 缓存文件
-__pycache__
-
-# 忽略 MP4 文件
+# 忽略mp4文件
 *.mp4
+
+# 忽略python中间文件
+__pycache__
