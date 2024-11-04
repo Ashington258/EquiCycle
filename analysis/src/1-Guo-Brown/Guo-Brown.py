@@ -6,6 +6,7 @@ import torch
 import requests
 import threading
 import matplotlib.pyplot as plt
+from skimage.morphology import skeletonize
 
 
 class Config:
@@ -150,6 +151,29 @@ def main():
         # YOLO推理
         results = yolo_processor.infer(frame)
 
+        # 创建用于绘制的副本
+        annotated_frame = frame.copy()
+
+        # 处理分割掩码并应用细化算法
+        if results[0].masks is not None:
+            masks = results[0].masks.data  # 获取掩码数据，形状为 (num_masks, H, W)
+
+            for mask in masks:
+                # 将掩码转换为 NumPy 数组
+                mask_np = mask.cpu().numpy().astype(np.uint8) * 255  # 转换为 0 和 255
+
+                # 应用 Guo-Brown 细化算法（使用 skeletonize 近似）
+                thinned_mask = skeletonize(mask_np > 0)
+
+                # 将细化后的掩码转换为 uint8 类型
+                thinned_mask_uint8 = thinned_mask.astype(np.uint8) * 255
+
+                # 获取细化掩码中非零像素的索引
+                indices = np.where(thinned_mask_uint8 > 0)
+
+                # 在 annotated_frame 上绘制细化后的车道线（红色）
+                annotated_frame[indices[0], indices[1], :] = [0, 0, 255]  # BGR
+
         # 计算FPS
         current_time = time.time()
         elapsed_time = current_time - prev_time
@@ -159,7 +183,7 @@ def main():
 
         # 显示FPS
         cv2.putText(
-            frame,
+            annotated_frame,
             f"FPS: {fps:.2f}",
             (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -169,7 +193,6 @@ def main():
         )
 
         # 显示结果
-        annotated_frame = results[0].plot()
         cv2.imshow("YOLOv8 Instance Segmentation with Centerline", annotated_frame)
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
