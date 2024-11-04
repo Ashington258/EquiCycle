@@ -168,8 +168,15 @@ def main():
                 # 将细化后的掩码转换为 uint8 类型
                 thinned_mask_uint8 = thinned_mask.astype(np.uint8) * 255
 
+                # 调整掩码的尺寸以匹配原始帧
+                thinned_mask_resized = cv2.resize(
+                    thinned_mask_uint8,
+                    (frame.shape[1], frame.shape[0]),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+
                 # 获取细化掩码中非零像素的索引
-                indices = np.where(thinned_mask_uint8 > 0)
+                indices = np.where(thinned_mask_resized > 0)
 
                 # 在 annotated_frame 上绘制细化后的车道线（红色）
                 annotated_frame[indices[0], indices[1], :] = [0, 0, 255]  # BGR
