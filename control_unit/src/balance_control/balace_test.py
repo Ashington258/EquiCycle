@@ -2,14 +2,14 @@ import threading
 import logging
 import time
 
-# Initialize shared control parameters and lock
+# 初始化共享控制参数和锁
 control_params = {}
 control_params_lock = threading.Lock()
 
-# Define motor speed limits
+# 定义电机速度限制
 MOTOR_SPEED_LIMIT = 30.0
 
-# Global variables for motor control
+# 电机控制的全局变量
 v_back = 1
 stop_count = 0
 stop_flag = 0
@@ -17,7 +17,10 @@ stop_flag = 0
 
 def control_layer(data, odrive_instance):
     """
-    Process incoming data and adjust motor speed based on control logic.
+    处理传入的数据并根据控制逻辑调整电机速度。
+
+    :param data: 包含设备数据的字典
+    :param odrive_instance: ODrive 实例，用于控制电机
     """
     device = data.get("device")
 
@@ -27,30 +30,30 @@ def control_layer(data, odrive_instance):
         process_odrive_data(data)
         adjust_motor_speed(odrive_instance)
     else:
-        logging.warning(f"Unknown device data: {data}")
+        logging.warning(f"未知设备数据: {data}")
 
 
 def process_ch100_data(data):
     """
-    Extract and save CH100 sensor data (Euler angles, acceleration, and angular velocity).
+    提取并保存 CH100 传感器数据（欧拉角、加速度和角速度）。
+
+    :param data: 包含 CH100 传感器数据的字典
     """
-    # Extract Euler angles
+    # 提取欧拉角
     roll = data.get("roll", 0.0)
     pitch = data.get("pitch", 0.0)
     yaw = data.get("yaw", 0.0)
     euler_angles = {"roll": roll, "pitch": pitch, "yaw": yaw}
 
-    # Extract angular velocity data
-    angular_velocity = data.get(
-        "gyr", [0.0, 0.0, 0.0]
-    )  # Assuming 'gyr' contains angular velocity data
+    # 提取角速度数据
+    angular_velocity = data.get("gyr", [0.0, 0.0, 0.0])  # 假设 'gyr' 包含角速度数据
     gyro_data = {
         "x": angular_velocity[0],
         "y": angular_velocity[1],
         "z": angular_velocity[2],
     }
 
-    # Save data to shared control parameters
+    # 将数据保存到共享控制参数中
     with control_params_lock:
         control_params["euler_angles"] = euler_angles
         control_params["gyro"] = gyro_data
@@ -58,61 +61,66 @@ def process_ch100_data(data):
 
 def process_odrive_data(data):
     """
-    Extract and save ODrive data (motor position and speed).
+    提取并保存 ODrive 数据（电机位置和速度）。
+
+    :param data: 包含 ODrive 数据的字典
     """
-    # Extract motor position and speed
+    # 提取电机位置和速度
     feedback = data.get("feedback", "")
     if feedback:
         feedback_values = feedback.split()
         motor_position = float(feedback_values[0])
         motor_speed = float(feedback_values[1])
 
-    # Save motor position and speed to shared control parameters
-    with control_params_lock:
-        control_params["motor_position"] = motor_position
-        control_params["motor_speed"] = motor_speed
-
-
-def adjust_motor_speed(odrive_instance):
-    """
-    Adjust the motor speed based on the roll angle to maintain balance.
-    """
-    global stop_count, stop_flag
-
-    # Get current roll angle and motor speed from control parameters
-    with control_params_lock:
-        gyro = control_params.get("gyro", {}).get("y", 0.0)
-        angle = control_params.get("euler_angles", {}).get("roll", 0.0)
-        motor_speed = control_params.get("motor_speed", 0.0)
-
-    # Placeholder for custom control logic (without PID)
-    # For example, you can implement a simple control logic here based on angle
-    control_signal = -angle  # Example: inverse of the roll angle
-
-    # Apply clamping to restrict the motor speed within the defined limits
-    new_motor_speed = clamp_speed(control_signal, -MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT)
-
-    # Send the updated motor speed to ODrive
-    if abs(angle) > 8:  # Stop the motor if the angle exceeds a threshold
-        new_motor_speed = 0
-        v_back = 0
-    else:
-        v_back = 0
-
-    odrive_instance.motor_velocity(0, new_motor_speed, 0)
+        # 将电机位置和速度保存到共享控制参数中
+        with control_params_lock:
+            control_params["motor_position"] = motor_position
+            control_params["motor_speed"] = motor_speed
 
 
 def clamp_speed(speed, min_speed, max_speed):
     """
-    Clamps the motor speed between the specified limits.
+    将电机速度限制在指定的范围内。
 
-    :param speed: The calculated motor speed
-    :param min_speed: Minimum allowable speed
-    :param max_speed: Maximum allowable speed
-    :return: Clamped motor speed
+    :param speed: 计算出的电机速度
+    :param min_speed: 最小允许速度
+    :param max_speed: 最大允许速度
+    :return: 限制后的电机速度
     """
     if speed > max_speed:
         return max_speed
     elif speed < min_speed:
         return min_speed
     return speed
+
+
+def adjust_motor_speed(odrive_instance):
+    """
+    根据滚转角度调整电机速度以保持平衡。
+
+    :param odrive_instance: ODrive 实例，用于控制电机
+    """
+    global stop_count, stop_flag
+
+    # 从控制参数中获取当前的滚转角度和电机速度
+    with control_params_lock:
+        gyro = control_params.get("gyro", {}).get("y", 0.0)
+        angle = control_params.get("euler_angles", {}).get("roll", 0.0)
+        motor_speed = control_params.get("motor_speed", 0.0)
+
+    # 自定义控制逻辑的占位符（不使用 PID）
+    control_signal = -angle  # 示例：滚转角度的反向
+
+    # 限制电机速度在定义的范围内
+    new_motor_speed = clamp_speed(control_signal, -MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT)
+
+    # 如果角度超过阈值，则停止电机
+    if abs(angle) > 8:
+        new_motor_speed = 0
+        global v_back
+        v_back = 0
+    else:
+        v_back = 0
+
+    # 将更新后的电机速度发送到 ODrive
+    odrive_instance.motor_velocity(0, new_motor_speed, 0)

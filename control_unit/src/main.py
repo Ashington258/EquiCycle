@@ -17,7 +17,7 @@ from balance_control.balance_control import control_layer  # 导入 control_laye
 logging.getLogger().handlers.clear()
 
 
-def load_config(file_path="control_unit/control_unit/src/config.json"):
+def load_config(file_path="control_unit/src/config.json"):
     with open(file_path, "r") as f:
         return json.load(f)
 
