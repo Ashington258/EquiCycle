@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import serial
 import struct
 import logging
@@ -70,32 +68,6 @@ class Int16Parser:
                 del self.buffer[0]  # 移除不匹配的帧头
         
         return frames
-
-class Int16Device:
-    def __init__(self, port, baudrate):
-        self.port = port
-        self.baudrate = baudrate
-        self.serial = None
-        self.parser = Int16Parser()
-
-    def open(self):
-        """打开串口"""
-        self.serial = serial.Serial(port=self.port, baudrate=self.baudrate, timeout=0.1)
-        logging.info(f"打开串口 {self.port}，波特率 {self.baudrate}")
-
-    def close(self):
-        """关闭串口"""
-        if self.serial:
-            self.serial.close()
-            logging.info(f"关闭串口 {self.port}")
-
-    def read_and_parse(self):
-        """读取并解析数据"""
-        data = self.serial.read(5)  # 读取一帧数据（5字节）
-        if data:
-            frames = self.parser.parse(data)
-            return frames
-        return []
 
 def main():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
