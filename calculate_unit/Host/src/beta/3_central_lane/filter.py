@@ -161,6 +161,9 @@ def main():
     # 初始化计时器
     prev_time = time.time()
 
+    # 初始化历史中心线列表
+    centerline_history = []
+
     while True:
         ret, frame = video_processor.read_frame()
         if not ret:
@@ -195,13 +198,12 @@ def main():
         # 绘制ROI矩形
         cv2.rectangle(
             frame, roi_top_left, roi_bottom_right, (0, 255, 0), 2
-        )  # 绿色矩形，线条粗细为2
+        )  # 保持绿色矩形，线条粗细为2
 
         # 绘制检测窗口内的中线
         roi_mid_x = (roi_top_left[0] + roi_bottom_right[0]) // 2  # ROI中线的X坐标
         cv2.line(frame, (roi_mid_x, roi_top_left[1]), (roi_mid_x, roi_bottom_right[1]), (0, 255, 0), 2)
 
-        
         # 存储所有拟合的车道线曲线参数
         lane_curves = []
 
@@ -222,9 +224,7 @@ def main():
 
         if lane_curves:
             # 对车道线进行排序
-            # 以曲线在ROI底部的x坐标作为排序依据
             lane_curves_sorted = []
-
             for curve in lane_curves:
                 # 获取曲线在ROI底部的x坐标
                 y_bottom = roi_bottom_right[1] - roi_top_left[1]
@@ -233,15 +233,60 @@ def main():
 
             # 按x坐标排序
             lane_curves_sorted.sort(key=lambda item: item[1])
-
-            # 提取排序后的曲线
             sorted_curves = [item[0] for item in lane_curves_sorted]
 
-            # 计算水平距离
+            # 计算水平距离和中心线
             distances = []
-            
+            for i in range(len(sorted_curves) - 1):
+                curve_left = sorted_curves[i]
+                curve_right = sorted_curves[i + 1]
 
-             # 绘制车道线
+                y_vals = np.linspace(0, roi_bottom_right[1] - roi_top_left[1], num=100)
+                x_vals_left = np.polyval(curve_left, y_vals)
+                x_vals_right = np.polyval(curve_right, y_vals)
+
+                # 计算中心线
+                x_vals_center = (x_vals_left + x_vals_right) / 2
+
+                # 平滑处理
+                if centerline_history:
+                    previous_centerline = centerline_history[-1]
+                    deviation = np.abs(x_vals_center - previous_centerline)
+                    threshold = 10  # 设定跳变阈值
+                    smoothing_factor = np.where(deviation > threshold, 0.7, 0.3)
+                    x_vals_center = (1 - smoothing_factor) * previous_centerline + smoothing_factor * x_vals_center
+
+                # 更新中心线历史
+                centerline_history.append(x_vals_center)
+                if len(centerline_history) > 5:  # 只保留最近5帧的历史记录
+                    centerline_history.pop(0)
+
+                # 计算水平距离并更新列表
+                distances.append(x_vals_center - roi_mid_x)
+
+                x_vals_center = x_vals_center.astype(np.int32) + roi_top_left[0]
+                y_vals_center = y_vals.astype(np.int32) + roi_top_left[1]
+
+                valid_indices = (
+                    (x_vals_center >= 0)
+                    & (x_vals_center < frame_width)
+                    & (y_vals_center >= 0)
+                    & (y_vals_center < frame_height)
+                )
+                x_vals_center = x_vals_center[valid_indices]
+                y_vals_center = y_vals_center[valid_indices]
+
+                # 绘制平滑后的中心线
+                for j in range(len(x_vals_center) - 1):
+                    cv2.line(
+                        frame,
+                        (x_vals_center[j], y_vals_center[j]),
+                        (x_vals_center[j + 1], y_vals_center[j + 1]),
+                        (255, 0, 0),
+                        2,
+                    )
+
+            # 绘制车道线
             for curve in sorted_curves:
                 y_vals = np.linspace(0, roi_bottom_right[1] - roi_top_left[1], num=100)
                 x_vals = np.polyval(curve, y_vals)
@@ -258,7 +303,7 @@ def main():
                 x_vals = x_vals[valid_indices]
                 y_vals = y_vals[valid_indices]
 
-                # 绘制拟合曲线
+                # 绘制拟合曲线（红色车道线）
                 for i in range(len(x_vals) - 1):
                     cv2.line(
                         frame,
@@ -267,56 +312,14 @@ def main():
                         (0, 0, 255),
                         2,
                     )
-            
-            # 绘制车道线
-            for i in range(len(sorted_curves) - 1):
-                curve_left = sorted_curves[i]
-                curve_right = sorted_curves[i + 1]
 
-                y_vals = np.linspace(0, roi_bottom_right[1] - roi_top_left[1], num=100)
-                x_vals_left = np.polyval(curve_left, y_vals)
-                x_vals_right = np.polyval(curve_right, y_vals)
-
-                # 计算中心线
-                x_vals_center = (x_vals_left + x_vals_right) / 2
-
-                # 计算每个点的水平距离，并根据方向添加符号
-                distances.append(x_vals_center - roi_mid_x)
-
-                x_vals_center = x_vals_center.astype(np.int32) + roi_top_left[0]
-                y_vals_center = y_vals.astype(np.int32) + roi_top_left[1]
-
-                valid_indices = (
-                    (x_vals_center >= 0)
-                    & (x_vals_center < frame_width)
-                    & (y_vals_center >= 0)
-                    & (y_vals_center < frame_height)
-                )
-                x_vals_center = x_vals_center[valid_indices]
-                y_vals_center = y_vals_center[valid_indices]
-
-                # 绘制中心线
-                for j in range(len(x_vals_center) - 1):
-                    cv2.line(
-                        frame,
-                        (x_vals_center[j], y_vals_center[j]),
-                        (x_vals_center[j + 1], y_vals_center[j + 1]),
-                        (255, 0, 0),
-                        2,
-                    )
-
-            # 计算平均水平距离
+            # 计算并显示平均水平距离
             if distances:
                 avg_distance = np.mean([np.mean(dist) for dist in distances])
-                # 限幅处理
-                avg_distance = max(min(avg_distance, 100), -100)  
-                # 保留为整数
-                avg_distance = int(avg_distance)
-                # 将平均距离显示在画面右上角
                 cv2.putText(
                     frame,
-                    f"Avg Distance: {avg_distance}px",
-                    (frame_width - 400, 50),  # 右上角位置
+                    f"Avg Distance: {avg_distance:.2f}px",
+                    (frame_width - 400, 50),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     1,
                     (255, 0, 0),
