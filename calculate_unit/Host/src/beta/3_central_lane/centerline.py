@@ -323,6 +323,9 @@ def main():
                     2,
                 )
 
+                # 在终端显示平均距离
+                print(f"Avg Distance: {avg_distance}px")
+
         # 显示结果
         cv2.imshow("YOLOv8 Instance Segmentation with Centerline", frame)
 
