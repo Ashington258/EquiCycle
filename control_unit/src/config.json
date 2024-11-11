@@ -1,19 +1,19 @@
 {
     "ch100": {
-        "port": "COM25",
+        "port": "/dev/ttyUSB2",
         "baudrate": 460800,
         "zmq_port": 5555
     },
     "odrive": {
-        "port": "COM23",
+        "port": "/dev/ttyUSB1",
         "baudrate": 460800,
         "zmq_port": 5556
     },
     "servo": {
-        "port": "COM24",
+        "port": "/dev/ttyUSB0",
         "baudrate": 115200,
         "udp_host": "0.0.0.0",
-        "udp_port": 5557
+        "udp_port": 5555
     },
     "monitoring": {
         "zmq_port": 5555

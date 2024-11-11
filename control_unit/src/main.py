@@ -18,7 +18,7 @@ logging.getLogger().handlers.clear()
 
 
 # 加载配置
-def load_config(file_path="control_unit/src/config.json"):
+def load_config(file_path="EquiCycle/control_unit/src/config.json"):
     with open(file_path, "r") as f:
         return json.load(f)
 
