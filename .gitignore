@@ -61,3 +61,10 @@ cache.md
 
 # 忽略 python 缓存文件
 __pycache__
+
+# 忽略 MP4文件
+*.mp4
+
+# 忽略 jpg 文件
+
+*.jpg

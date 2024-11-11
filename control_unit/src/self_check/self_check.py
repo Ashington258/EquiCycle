@@ -11,7 +11,7 @@ logging.basicConfig(
 
 
 # 从 JSON 文件读取设备配置
-def load_device_config(filename="control_unit/control_unit/src/config.json"):
+def load_device_config(filename="EquiCycle/control_unit/src/config.json"):
     with open(filename, "r") as f:
         return json.load(f)
 
