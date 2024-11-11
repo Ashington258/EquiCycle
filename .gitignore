@@ -57,3 +57,11 @@ CMakePresets.json
 cmake_install.cmake
 compile_commands.json
 
+# 忽略mp4文件
+*.mp4
+
+# 忽略python中间文件
+__pycache__
+
+# 忽略dataset文件夹
+dataset
