@@ -9,6 +9,12 @@
         "baudrate": 460800,
         "zmq_port": 5556
     },
+    "servo": {
+        "port": "COM24",
+        "baudrate": 115200,
+        "udp_host": "0.0.0.0",
+        "udp_port": 5557
+    },
     "monitoring": {
         "zmq_port": 5555
     }
