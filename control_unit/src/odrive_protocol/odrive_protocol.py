@@ -8,7 +8,7 @@ class ODriveAsciiProtocol:
 
     def send_command(self, command: str):
         # Debug information: Show the command being sent
-        print(f"Sending command: {command}")
+        # print(f"Sending command: {command}")
         # Send command to the ODrive, with newline character
         self.serial.write(f"{command}\n".encode())
 

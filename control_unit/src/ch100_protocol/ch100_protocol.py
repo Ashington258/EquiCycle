@@ -100,12 +100,12 @@ class CH100Device:
 
     def open(self):
         self.serial = serial.Serial(port=self.port, baudrate=self.baudrate, timeout=0.1)
-        logging.info(f"打开串口 {self.port}，波特率 {self.baudrate}")
+        # logging.info(f"打开串口 {self.port}，波特率 {self.baudrate}")
 
     def close(self):
         if self.serial:
             self.serial.close()
-            logging.info(f"关闭串口 {self.port}")
+            # logging.info(f"关闭串口 {self.port}")
 
     def read_and_parse(self):
         data = self.serial.read(82)  # CORE

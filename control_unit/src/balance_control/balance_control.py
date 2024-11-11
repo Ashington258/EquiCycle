@@ -11,6 +11,8 @@ TARGET_ROLL = 0.0  # Target roll angle for balance
 Kp = 0.1  # Proportional gain
 Ki = 0.0  # Integral gain
 Kd = 0.0  # Derivative gain
+v_back = 1
+stop_count = 0
 stop_flag = 0
 
 # Global variables for PID control
@@ -19,7 +21,7 @@ integral = 0.0
 last_time = time.time()
 
 # Define motor speed limits
-MOTOR_SPEED_LIMIT = 27.0
+MOTOR_SPEED_LIMIT = 30.0
 
 
 
@@ -64,11 +66,11 @@ offset_angle = 5 # 改大往右倒
 class CascadedPIDController:
     def __init__(self):
         # 最内环：角速度环PID控制器 kp=1.9, ki=0, kd=0/kp=2.37, ki=0, kd=0（8）
-        self.gyro_pid = PIDController(kp=2.37, ki=0, kd=0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
-        # 中间环：角度环PID控制器kp=7, ki=0, kd=4/kp=5.7, ki=0, kd=4（8）
-        self.angle_pid = PIDController(kp=5.7, ki=0, kd=3.7, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
-        # 外环：速度环PID控制器 kp=-0.085
-        self.velocity_pid = PIDController(kp=-0.085, ki=-0.001, kd=-0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        self.gyro_pid = PIDController(kp=2.3, ki=0, kd=0.001, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        # 中间环：角度环PID控制器kp=7, ki=0, kd=4/kp=5.7, ki=0, kd=3.7（8）
+        self.angle_pid = PIDController(kp=5.2, ki=0, kd=3.8, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        # 外环：速度环PID控制器 kp=-0.085,ki=-0.001
+        self.velocity_pid = PIDController(kp=-0.087, ki=-0.0003, kd=-0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
 
         self.gyro_update_counter = 0
         self.angle_control_signal = 0
@@ -152,7 +154,7 @@ def process_ch100_data(data):
     """
     Extract and save CH100 sensor data (Euler angles, acceleration, and angular velocity).
     """
-    logging.info(f"✅ Control layer processing CH100 data: {data}")
+    # logging.info(f"✅ Control layer processing CH100 data: {data}")
 
     # Extract Euler angles
     roll = data.get("roll", 0.0)
@@ -169,14 +171,14 @@ def process_ch100_data(data):
         control_params["euler_angles"] = euler_angles
         control_params["gyro"] = gyro_data
 
-    logging.info(f"✨ Extracted CH100 Data -> Euler Angles: {euler_angles}")
+    # logging.info(f"✨ Extracted CH100 Data -> Euler Angles: {euler_angles}")
 
 
 def process_odrive_data(data):
     """
     Extract and save ODrive data (motor position and speed).
     """
-    logging.info(f"✅ Control layer processing ODrive data: {data}")
+    # logging.info(f"✅ Control layer processing ODrive data: {data}")
 
     # Extract motor position and speed
     feedback = data.get("feedback", "")
@@ -193,10 +195,10 @@ def process_odrive_data(data):
         control_params["motor_position"] = motor_position
         control_params["motor_speed"] = motor_speed
 
-    logging.info(
-        f"✨ Extracted ODrive Data -> Motor Position: {motor_position}, "
-        f"Motor Speed: {motor_speed}"
-    )
+    # logging.info(
+    #     f"✨ Extracted ODrive Data -> Motor Position: {motor_position}, "
+    #     f"Motor Speed: {motor_speed}"
+    # )
 
 CascadePIDclass = CascadedPIDController()
 
@@ -206,6 +208,7 @@ def adjust_motor_speed(odrive_instance, PIDclass):
     Adjust the motor speed using a PID controller based on the roll angle to maintain balance.
     """
 
+    global stop_count, stop_flag
     # Get current roll angle and motor speed from control parameters
     with control_params_lock:
         gyro = control_params.get("gyro", {}).get("y", 0.0)
@@ -227,17 +230,19 @@ def adjust_motor_speed(odrive_instance, PIDclass):
         new_motor_speed = 0
         v_back = 0
     else:
-        v_back = 1
+        v_back = 0
     odrive_instance.motor_velocity(0, new_motor_speed, 0)
 
-    stop_flag = stop_flag + 1
-    if stop_flag == 10000:
-        odrive_instance.motor_velocity(1, v_back, 0)
+    # stop_count += 1
+    # if stop_count >= 2000:
+    #     stop_flag = 1
+    # if stop_flag == 1:
+    #     odrive_instance.motor_velocity(1, v_back, 0)
 
-    logging.info(
-        f"🔧 Output: {motor_speed}, "
-        f"New Motor Speed: {new_motor_speed}"
-    )
+    # logging.info(
+    #     f"🔧 Output: {stop_count}, "
+    #     f"New Motor Speed: {stop_flag}"
+    # )
 
 
 def clamp_speed(speed, min_speed, max_speed):

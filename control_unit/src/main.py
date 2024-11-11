@@ -8,10 +8,13 @@ from ch100_protocol.ch100_protocol import CH100Device
 from odrive_protocol.odrive_protocol import ODriveAsciiProtocol
 from balance_control.balance_control import control_layer  # 导入 control_layer 函数
 
-# 配置日志记录
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(threadName)s] %(levelname)s: %(message)s"
-)
+# # 配置日志记录
+# logging.basicConfig(
+#     level=logging.WARNING,  # 修改为 WARNING 级别
+#     format="%(asctime)s [%(threadName)s] %(levelname)s: %(message)s",
+# )
+# 移除所有的日志处理程序，关闭日志模块
+logging.getLogger().handlers.clear()
 
 
 def load_config(file_path="control_unit/src/config.json"):
@@ -71,10 +74,10 @@ def odrive_thread_function(odrive_instance, data_queue):
                     "feedback": feedback,
                 }
                 data_queue.put(data)  # 将反馈放入队列
-                logging.info(f"已将 ODrive 反馈添加到队列: {data}")
+                # logging.info(f"已将 ODrive 反馈添加到队列: {data}")
             except Exception as e:
                 logging.error(f"ODrive 线程错误: {e}")
-            time.sleep(0.005)  # 限制请求速率为 10ms
+            time.sleep(0.005)  # 限制请求速率为 5ms
     finally:
         odrive_instance.close()
         logging.info("ODrive 线程已停止")
@@ -92,7 +95,7 @@ def control_thread_function(odrive_instance, data_queue):
                 # 从队列获取数据（在有项目可用时阻塞）
                 data = data_queue.get(timeout=1)
                 control_layer(data, odrive_instance)  # 将数据传递给控制层
-                logging.info(f"已处理数据: {data}")
+                # logging.info(f"已处理数据: {data}")
             except queue.Empty:
                 pass  # 超时发生，继续循环
             except Exception as e:
