@@ -140,10 +140,6 @@ def process_odrive_data(data):
         control_params["motor_position"] = motor_position
         control_params["motor_speed"] = motor_speed
 
-    # logging.info(
-    #     f"✨ Extracted ODrive Data -> Motor Position: {motor_position}, "
-    #     f"Motor Speed: {motor_speed}"
-    # )
 
 CascadePIDclass = CascadedPIDController()
 
