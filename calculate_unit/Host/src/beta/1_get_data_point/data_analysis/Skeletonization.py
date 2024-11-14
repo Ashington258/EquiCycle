@@ -12,9 +12,7 @@ import matplotlib.pyplot as plt
 class Config:
     """配置参数类"""
 
-    MODEL_PATH = (
-        "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/model/best.pt"
-    )
+    MODEL_PATH = "calculate_unit/Host/src/beta/model/100_LaneSeg.pt"
     INPUT_SOURCE = "2.mp4"  # 可以是视频路径、摄像头ID或URL
     CONF_THRESH = 0.25
     IMG_SIZE = 1280

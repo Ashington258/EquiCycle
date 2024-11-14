@@ -3,12 +3,10 @@ import time
 from ultralytics import YOLO
 
 # 加载训练好的 YOLOv8 模型
-model = YOLO(
-    "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/model/best.pt"
-)  # 替换为你的模型路径
+model = YOLO("calculate_unit/Host/src/beta/model/100_LaneSeg.pt")  # 替换为你的模型路径
 
 # 打开视频文件或摄像头
-video_path = "2.mp4"  # 替换为你的视频文件路径
+video_path = "calculate_unit/Host/src/beta/video.mp4"  # 替换为你的视频文件路径
 cap = cv2.VideoCapture(video_path)
 
 # 获取视频的帧率

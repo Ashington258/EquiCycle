@@ -12,7 +12,7 @@ import threading
 class Config:
     """配置参数类"""
 
-    MODEL_PATH = "calculate_unit/Host/src/beta/model/best.pt"
+    MODEL_PATH = "calculate_unit/Host/src/beta/model/100_LaneSeg.pt"
     INPUT_SOURCE = (
         "calculate_unit/Host/src/beta/video.mp4"  # 可以是视频路径、摄像头ID或URL
     )

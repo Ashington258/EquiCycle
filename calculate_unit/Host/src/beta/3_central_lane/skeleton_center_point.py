@@ -11,10 +11,10 @@ import threading
 class Config:
     """配置参数类"""
 
-    MODEL_PATH = (
-        "F:/0.Temporary_Project/EquiCycle/Calculation_Unit/Host/src/beta/model/best.pt"
+    MODEL_PATH = "calculate_unit/Host/src/beta/model/100_LaneSeg.pt"
+    INPUT_SOURCE = (
+        "calculate_unit/Host/src/beta/video.mp4"  # 可以是视频路径、摄像头ID或URL
     )
-    INPUT_SOURCE = "2.mp4"  # 可以是视频路径、摄像头ID或URL
     CONF_THRESH = 0.25
     IMG_SIZE = 1280
     ROI_TOP_LEFT_RATIO = (0, 0.35)
@@ -295,4 +295,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
