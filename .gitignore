@@ -57,6 +57,9 @@ CMakePresets.json
 cmake_install.cmake
 compile_commands.json
 
+# 忽略office临时文件
+~$*
+
 # 忽略mp4文件
 *.mp4
 
