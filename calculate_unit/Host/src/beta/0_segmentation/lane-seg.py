@@ -6,7 +6,7 @@ from ultralytics import YOLO
 model = YOLO("calculate_unit/Host/src/beta/model/100_LaneSeg.pt")  # 替换为你的模型路径
 
 # 打开视频文件或摄像头
-video_path = "dataset/video/【视频】【毕导】这是科学史上最难理解的悖论.mp4"  # 替换为你的视频文件路径
+video_path = "dataset/video/video/VID20241114091357.mp4"  # 替换为你的视频文件路径
 cap = cv2.VideoCapture(video_path)
 
 # 获取视频的帧率
