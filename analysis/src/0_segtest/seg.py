@@ -12,11 +12,9 @@ class Config:
     """配置参数类"""
 
     MODEL_PATH = "analysis/model/100_LaneSeg.pt"
-    INPUT_SOURCE = (
-        "dataset/video/完整测试视频.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
-    )
+    INPUT_SOURCE = "dataset/video/3.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     CONF_THRESH = 0.25
-    IMG_SIZE = 1280
+    IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
     ROI_TOP_LEFT_RATIO = (0, 0.35)
     ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
 
@@ -67,22 +65,40 @@ class VideoProcessor:
             self.fps_original = self.cap.get(cv2.CAP_PROP_FPS)
             print(f"原始视频帧率: {self.fps_original}")
 
+        # 创建可调整大小的窗口，并设置为固定大小
         cv2.namedWindow(
             "YOLOv8 Instance Segmentation with Centerline", cv2.WINDOW_NORMAL
+        )
+        cv2.resizeWindow(
+            "YOLOv8 Instance Segmentation with Centerline",
+            Config.IMG_SIZE,
+            int(Config.IMG_SIZE * 0.75),
         )
 
     def read_frame(self):
         """读取下一帧"""
         if self.image is not None:
-            return True, self.image
-        if self.cap:
+            frame = self.image
+        elif self.cap:
             ret, frame = self.cap.read()
-            return ret, frame
+            if not ret:
+                return False, None
         elif self.stream:
             frame = self.stream.get_frame()
-            if frame is not None:
-                return True, frame
-        return False, None
+            if frame is None:
+                return False, None
+        else:
+            return False, None
+
+        # 调整图像尺寸以匹配Config.IMG_SIZE宽度
+        target_width = Config.IMG_SIZE
+        height, width = frame.shape[:2]
+        scale = target_width / width
+        target_height = int(height * scale)
+        frame = cv2.resize(
+            frame, (target_width, target_height), interpolation=cv2.INTER_LINEAR
+        )
+        return True, frame
 
     def release(self):
         """释放资源"""
