@@ -65,3 +65,6 @@ __pycache__
 
 # 忽略 dataset 文件夹
 dataset
+
+# 忽略 .md 文件
+_.md
