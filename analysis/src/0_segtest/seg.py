@@ -6,6 +6,7 @@ import torch
 import requests
 import threading
 import matplotlib.pyplot as plt
+from skimage.morphology import skeletonize
 
 
 class Config:
@@ -13,10 +14,24 @@ class Config:
 
     MODEL_PATH = "analysis/model/100_LaneSeg.pt"
     INPUT_SOURCE = "dataset/video/3.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
-    CONF_THRESH = 0.25
+    CONF_THRESH = 0.65  # 置信度阈值
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
     ROI_TOP_LEFT_RATIO = (0, 0.35)
     ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
+
+
+class Utils:
+    """通用工具类"""
+
+    @staticmethod
+    def resize_frame(frame, target_width):
+        """调整帧的尺寸，保持宽高比"""
+        height, width = frame.shape[:2]
+        scale = target_width / width
+        target_height = int(height * scale)
+        return cv2.resize(
+            frame, (target_width, target_height), interpolation=cv2.INTER_LINEAR
+        )
 
 
 class YOLOProcessor:
@@ -37,15 +52,25 @@ class VideoProcessor:
     """视频处理类，支持图片、视频、摄像头和网络流"""
 
     def __init__(self, input_source):
+        self._initialize_input(input_source)
+        if self.cap:
+            self.fps_original = self.cap.get(cv2.CAP_PROP_FPS)
+            print(f"原始视频帧率: {self.fps_original}")
+
+        # 创建可调整大小的窗口
+        self._initialize_display_window()
+
+    def _initialize_input(self, input_source):
+        """初始化输入源"""
         if isinstance(input_source, str):
-            if input_source.startswith("http://") or input_source.startswith(
-                "https://"
-            ):
+            if input_source.startswith(("http://", "https://")):
                 self.stream = VideoStream(input_source)
                 self.cap = None
+                self.image = None
             elif input_source.lower().endswith((".jpg", ".jpeg", ".png")):
                 self.cap = None
                 self.image = cv2.imread(input_source)
+                self.stream = None
             else:
                 self.cap = cv2.VideoCapture(input_source)
                 if not self.cap.isOpened():
@@ -61,11 +86,8 @@ class VideoProcessor:
         else:
             raise ValueError("未知的输入源类型")
 
-        if self.cap is not None:
-            self.fps_original = self.cap.get(cv2.CAP_PROP_FPS)
-            print(f"原始视频帧率: {self.fps_original}")
-
-        # 创建可调整大小的窗口，并设置为固定大小
+    def _initialize_display_window(self):
+        """初始化显示窗口"""
         cv2.namedWindow(
             "YOLOv8 Instance Segmentation with Centerline", cv2.WINDOW_NORMAL
         )
@@ -76,7 +98,7 @@ class VideoProcessor:
         )
 
     def read_frame(self):
-        """读取下一帧"""
+        """读取下一帧并调整尺寸"""
         if self.image is not None:
             frame = self.image
         elif self.cap:
@@ -90,14 +112,7 @@ class VideoProcessor:
         else:
             return False, None
 
-        # 调整图像尺寸以匹配Config.IMG_SIZE宽度
-        target_width = Config.IMG_SIZE
-        height, width = frame.shape[:2]
-        scale = target_width / width
-        target_height = int(height * scale)
-        frame = cv2.resize(
-            frame, (target_width, target_height), interpolation=cv2.INTER_LINEAR
-        )
+        frame = Utils.resize_frame(frame, Config.IMG_SIZE)
         return True, frame
 
     def release(self):
@@ -144,18 +159,14 @@ class VideoStream:
     def stop(self):
         self.running = False
 
-    def is_running(self):
-        return self.running
-
 
 def main():
     # 初始化配置
-    config = Config()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_processor = YOLOProcessor(
-        config.MODEL_PATH, config.CONF_THRESH, config.IMG_SIZE, device
+        Config.MODEL_PATH, Config.CONF_THRESH, Config.IMG_SIZE, device
     )
-    video_processor = VideoProcessor(config.INPUT_SOURCE)
+    video_processor = VideoProcessor(Config.INPUT_SOURCE)
 
     prev_time = time.time()
     fps_list = []
@@ -170,8 +181,7 @@ def main():
 
         # 计算FPS
         current_time = time.time()
-        elapsed_time = current_time - prev_time
-        fps = 1 / elapsed_time if elapsed_time > 0 else 0
+        fps = 1 / (current_time - prev_time) if current_time != prev_time else 0
         prev_time = current_time
         fps_list.append(fps)
 
