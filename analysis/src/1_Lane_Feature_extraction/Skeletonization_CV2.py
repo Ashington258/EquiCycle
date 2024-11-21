@@ -161,11 +161,17 @@ class VideoStream:
 
 
 def process_skeletonization(mask):
-    """对二值化的车道线进行骨架化"""
+    """对二值化的车道线进行骨架化，并平滑骨架形状"""
     # 归一化为[0, 1]
     binary = (mask / 255).astype(np.uint8)
+    # 骨架化
     skeleton = skeletonize(binary).astype(np.uint8) * 255
-    return skeleton
+
+    # 形态学处理以平滑骨架
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    skeleton_smoothed = cv2.morphologyEx(skeleton, cv2.MORPH_CLOSE, kernel)
+
+    return skeleton_smoothed
 
 
 def main():
