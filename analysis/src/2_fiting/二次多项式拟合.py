@@ -1,12 +1,11 @@
 import cv2
-import time
 import numpy as np
 from ultralytics import YOLO
 import torch
 import requests
 import threading
-import matplotlib.pyplot as plt
 from skimage.morphology import skeletonize
+from collections import defaultdict
 
 
 class Config:
@@ -16,7 +15,7 @@ class Config:
     INPUT_SOURCE = "dataset/video/1280.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     CONF_THRESH = 0.45  # 置信度阈值
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
-    ROI_TOP_LEFT_RATIO = (0, 0.35)
+    ROI_TOP_LEFT_RATIO = (0, 0.5)
     ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
 
 
@@ -62,27 +61,23 @@ class VideoProcessor:
 
     def _initialize_input(self, input_source):
         """初始化输入源"""
+        self.image = None
+        self.cap = None
+        self.stream = None
+
         if isinstance(input_source, str):
             if input_source.startswith(("http://", "https://")):
                 self.stream = VideoStream(input_source)
-                self.cap = None
-                self.image = None
             elif input_source.lower().endswith((".jpg", ".jpeg", ".png")):
-                self.cap = None
                 self.image = cv2.imread(input_source)
-                self.stream = None
             else:
                 self.cap = cv2.VideoCapture(input_source)
                 if not self.cap.isOpened():
                     raise ValueError(f"无法打开视频文件: {input_source}")
-                self.stream = None
-                self.image = None
         elif isinstance(input_source, int):
             self.cap = cv2.VideoCapture(input_source)
             if not self.cap.isOpened():
                 raise ValueError(f"无法打开摄像头: {input_source}")
-            self.stream = None
-            self.image = None
         else:
             raise ValueError("未知的输入源类型")
 
@@ -161,121 +156,92 @@ class VideoStream:
 
 
 def process_skeletonization(mask):
-    """对二值化的车道线进行骨架化"""
+    """对二值化的车道线进行骨架化并平滑"""
     binary = (mask / 255).astype(np.uint8)
     skeleton = skeletonize(binary).astype(np.uint8) * 255
-    return skeleton
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    return cv2.morphologyEx(skeleton, cv2.MORPH_CLOSE, kernel)
 
 
-def fit_polynomial_to_skeleton(skeleton):
-    """对骨架点进行二次多项式拟合"""
-    points = np.argwhere(skeleton > 0)  # 返回 (y, x) 坐标
-    if len(points) < 3:  # 确保有足够点进行拟合
-        return None
+def group_and_fit_skeleton(skeleton):
+    """对骨架点进行分组并拟合"""
+    data_points = np.column_stack(np.where(skeleton == 255))
+    lines = cv2.HoughLinesP(
+        skeleton, 1, np.pi / 180, threshold=50, minLineLength=87.88, maxLineGap=50
+    )
 
-    y_coords, x_coords = points[:, 0], points[:, 1]
+    distance_threshold = 20
+    categories = defaultdict(list)
 
-    # 拟合二次多项式：x = a*y^2 + b*y + c
-    poly_coeffs = np.polyfit(y_coords, x_coords, deg=2)
-    return poly_coeffs
+    if lines is not None:
+        for point in data_points:
+            min_distance = float("inf")
+            category_label = -1
+            for idx, line in enumerate(lines):
+                x1, y1, x2, y2 = line[0]
+                distance = np.abs(
+                    (y2 - y1) * point[1] - (x2 - x1) * point[0] + x2 * y1 - y2 * x1
+                ) / np.sqrt((y2 - y1) ** 2 + (x2 - x1) ** 2)
+                if distance < min_distance and distance < distance_threshold:
+                    min_distance = distance
+                    category_label = idx
+            if category_label != -1:
+                categories[category_label].append(point)
+
+    fit_results = {}
+    for label, points in categories.items():
+        points = np.array(points)
+        x_coords, y_coords = points[:, 1], points[:, 0]
+        if len(x_coords) > 2:
+            fit_results[label] = np.polyfit(x_coords, y_coords, 2)
+
+    return categories, fit_results
 
 
-def draw_polynomial(frame, poly_coeffs, color=(0, 255, 0), thickness=2):
-    """绘制二次多项式拟合曲线到帧上"""
-    if poly_coeffs is None:
-        return frame
+def visualize_fit(frame, skeleton, categories, fit_results):
+    """可视化结果"""
+    for label, points in categories.items():
+        points = np.array(points)
+        for point in points:
+            cv2.circle(frame, (point[1], point[0]), 2, (0, 0, 255), -1)
 
-    height, width = frame.shape[:2]
-    y_values = np.linspace(0, height - 1, num=height).astype(np.int32)  # y范围
-    x_values = np.polyval(poly_coeffs, y_values).astype(np.int32)  # 计算对应的x值
-
-    for i in range(len(y_values) - 1):
-        if 0 <= x_values[i] < width and 0 <= x_values[i + 1] < width:
-            cv2.line(
-                frame,
-                (x_values[i], y_values[i]),
-                (x_values[i + 1], y_values[i + 1]),
-                color,
-                thickness,
-            )
-    return frame
+        if label in fit_results:
+            poly_coeff = fit_results[label]
+            x_fit = np.linspace(points[:, 1].min(), points[:, 1].max(), 500)
+            y_fit = np.polyval(poly_coeff, x_fit)
+            for i in range(len(x_fit) - 1):
+                x1, y1 = int(x_fit[i]), int(y_fit[i])
+                x2, y2 = int(x_fit[i + 1]), int(y_fit[i + 1])
+                cv2.line(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
 
 def main():
-    # 初始化配置
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_processor = YOLOProcessor(
         Config.MODEL_PATH, Config.CONF_THRESH, Config.IMG_SIZE, device
     )
     video_processor = VideoProcessor(Config.INPUT_SOURCE)
 
-    prev_time = time.time()
-    fps_list = []
-
     while True:
         ret, frame = video_processor.read_frame()
         if not ret:
             break
 
-        # 默认值
-        frame_with_curve = frame.copy()  # 复制原始帧
-
-        # YOLO推理
         results = yolo_processor.infer(frame)
-
-        # 假设结果的mask存储在results[0].masks.data
         if results[0].masks is not None:
-            masks = results[0].masks.data.cpu().numpy()  # 假设mask格式为二值图像
+            masks = results[0].masks.data.cpu().numpy()
             skeleton_combined = np.zeros_like(masks[0], dtype=np.uint8)
+
             for mask in masks:
-                mask_resized = (mask * 255).astype(np.uint8)
-                skeleton = process_skeletonization(mask_resized)
+                skeleton = process_skeletonization((mask * 255).astype(np.uint8))
                 skeleton_combined = cv2.add(skeleton_combined, skeleton)
 
-            # 二次多项式拟合
-            poly_coeffs = fit_polynomial_to_skeleton(skeleton_combined)
+            categories, fit_results = group_and_fit_skeleton(skeleton_combined)
+            visualize_fit(frame, skeleton_combined, categories, fit_results)
 
-            # 在帧上绘制拟合曲线
-            frame_with_curve = draw_polynomial(frame, poly_coeffs)
-
-            # 显示骨架化结果叠加
-            cv2.imshow("Skeletonized Lane Combined", skeleton_combined)
-
-        # 计算FPS
-        current_time = time.time()
-        fps = 1 / (current_time - prev_time) if current_time != prev_time else 0
-        prev_time = current_time
-        fps_list.append(fps)
-
-        # 显示FPS
-        cv2.putText(
-            frame_with_curve,
-            f"FPS: {fps:.2f}",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 255, 0),
-            2,
-        )
-
-        # 显示结果
-        annotated_frame = results[0].plot()
-        cv2.imshow("YOLOv8 Instance Segmentation with Polynomial Fit", annotated_frame)
-
+        cv2.imshow("Lane Detection", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
-
-    # 计算平均帧率
-    avg_fps = sum(fps_list) / len(fps_list) if fps_list else 0
-    print(f"平均帧率: {avg_fps:.2f}")
-
-    plt.plot(fps_list)
-    plt.axhline(avg_fps, color="r", linestyle="--", label=f"Average FPS:{avg_fps:.2f}")
-    plt.title("FPS over Time")
-    plt.xlabel("Frame Index")
-    plt.ylabel("FPS")
-    plt.legend()
-    plt.show()
 
     video_processor.release()
 
