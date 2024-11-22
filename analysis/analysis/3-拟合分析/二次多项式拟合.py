@@ -4,15 +4,12 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 
 # 1. 读取图像
-image_path = "dataset/image/Skeletonized Lane Combined.png"  # 替换为你的图像路径
+image_path = "dataset/image/three_line.png"  # 替换为你的图像路径
 image = cv2.imread(image_path)
 
 # 2. 图像二值化
-# 将图像转换为灰度图
-gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-# 使用阈值进行二值化
-_, binary_image = cv2.threshold(gray_image, 127, 255, cv2.THRESH_BINARY)
+gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)  # 转换为灰度图
+_, binary_image = cv2.threshold(gray_image, 127, 255, cv2.THRESH_BINARY)  # 二值化
 
 # 3. 提取数据点（白色像素）
 data_points = np.column_stack(np.where(binary_image == 255))
@@ -36,7 +33,8 @@ if lines is not None:
             # 计算点到直线的距离
             distance = np.abs(
                 (y2 - y1) * point[1] - (x2 - x1) * point[0] + x2 * y1 - y2 * x1
-            ) / (np.sqrt((y2 - y1) ** 2 + (x2 - x1) ** 2))
+            ) / np.sqrt((y2 - y1) ** 2 + (x2 - x1) ** 2)
+
             if distance < min_distance and distance < distance_threshold:
                 min_distance = distance
                 category_label = idx
@@ -70,7 +68,6 @@ plt.figure(figsize=(6, 6))
 plt.title("Polynomial Fit for Each Category")
 
 for idx, (label, points) in enumerate(categories.items()):
-    # 转换点坐标格式为 (x, y)
     points = np.array(points)
     x_coords = points[:, 1]  # 横坐标
     y_coords = points[:, 0]  # 纵坐标

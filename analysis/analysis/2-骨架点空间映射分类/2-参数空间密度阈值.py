@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # 1. 读取图像
-image_path = "dataset/image/three_line.png"  # 使用绝对路径
+image_path = "dataset/image/Skeletonized Lane Combined.png"  # 使用绝对路径
 print(f"Trying to load image from: {image_path}")
 image = cv2.imread(image_path)
 
