@@ -174,6 +174,15 @@ def process_skeletonization(mask):
     return skeleton_smoothed
 
 
+def apply_nms(predictions, iou_threshold=0.5):
+    """对检测结果应用非极大值抑制（NMS）"""
+    boxes = torch.tensor(predictions[:, :4])  # 提取框坐标
+    scores = torch.tensor(predictions[:, 4])  # 提取置信度分数
+
+    keep_indices = torch.ops.torchvision.nms(boxes, scores, iou_threshold)
+    return predictions[keep_indices]
+
+
 def main():
     # 初始化配置
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -193,38 +202,36 @@ def main():
         # YOLO推理
         results = yolo_processor.infer(frame)
 
-        # 假设结果的mask存储在results[0].masks.data
-        if results[0].masks is not None:
-            masks = results[0].masks.data.cpu().numpy()  # 假设mask格式为二值图像
-            skeleton_combined = np.zeros_like(masks[0], dtype=np.uint8)
-            for mask in masks:
-                mask_resized = (mask * 255).astype(np.uint8)
-                skeleton = process_skeletonization(mask_resized)
-                skeleton_combined = cv2.add(skeleton_combined, skeleton)
+        # 获取检测框和置信度
+        detections = (
+            results[0].boxes.data.cpu().numpy()
+        )  # 假设格式为 (x1, y1, x2, y2, conf, class_id)
 
-            # 显示骨架化结果叠加
-            cv2.imshow("Skeletonized Lane Combined", skeleton_combined)
+        # 应用NMS
+        filtered_detections = apply_nms(detections, iou_threshold=0.5)
+
+        # 绘制过滤后的检测框
+        for det in filtered_detections:
+            x1, y1, x2, y2, conf, class_id = det
+            cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+            cv2.putText(
+                frame,
+                f"{int(class_id)}:{conf:.2f}",
+                (int(x1), int(y1) - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                2,
+            )
+
+        # 显示结果
+        cv2.imshow("Filtered Detections", frame)
 
         # 计算FPS
         current_time = time.time()
         fps = 1 / (current_time - prev_time) if current_time != prev_time else 0
         prev_time = current_time
         fps_list.append(fps)
-
-        # 显示FPS
-        cv2.putText(
-            frame,
-            f"FPS: {fps:.2f}",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 255, 0),
-            2,
-        )
-
-        # 显示结果
-        annotated_frame = results[0].plot()
-        cv2.imshow("YOLOv8 Instance Segmentation with Skeletonization", annotated_frame)
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
@@ -233,16 +240,10 @@ def main():
     avg_fps = sum(fps_list) / len(fps_list) if fps_list else 0
     print(f"平均帧率: {avg_fps:.2f}")
 
-    plt.plot(fps_list)
-    plt.axhline(avg_fps, color="r", linestyle="--", label=f"Average FPS:{avg_fps:.2f}")
-    plt.title("FPS over Time")
-    plt.xlabel("Frame Index")
-    plt.ylabel("FPS")
-    plt.legend()
-    plt.show()
-
     video_processor.release()
 
 
 if __name__ == "__main__":
     main()
+
+查看全部
