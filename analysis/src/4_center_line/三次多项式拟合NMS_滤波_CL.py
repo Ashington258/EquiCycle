@@ -15,7 +15,7 @@ class Config:
     MODEL_PATH = "analysis/model/equicycle.pt"
     INPUT_SOURCE = "dataset/video/1280.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     CONF_THRESH = 0.65  # 置信度阈值
-    IMG_SIZE = 1280  # 输入图像宽度，保持宽高比调整
+    IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
     ROI_TOP_LEFT_RATIO = (0, 0.35)
     ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
     CLASS_NAMES = ["Lane", "Roadblock", "Zebra Crossing", "Turn Left", "Turn Right"]
@@ -221,7 +221,6 @@ def fit_lane_points_and_draw(frame, skeleton, color=(0, 0, 255), lane_id=None):
     return frame, center_x, curve_points
 
 
-# 修改主循环，收集拟合曲线的点集
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_processor = YOLOProcessor(
@@ -285,7 +284,7 @@ def main():
                 frame, skeleton, color=(0, 0, 255), lane_id=idx
             )
 
-        # 计算并绘制相邻车道线的中心线
+        # 计算并绘制相邻车道线的中心线并编号
         for i in range(len(lane_data) - 1):
             curve_points1 = lane_data[i][1]
             curve_points2 = lane_data[i + 1][1]
@@ -313,11 +312,27 @@ def main():
             x_vals_center = (x_vals1 + x_vals2) / 2
             center_line_points = np.array([x_vals_center, y_vals]).T.astype(int)
 
-            # 绘制中心线
-            for point in center_line_points:
+            # 绘制中心线并添加编号
+            label_pos = None  # 记录标签位置
+            for idx, point in enumerate(center_line_points):
                 x, y = point
                 if 0 <= x < frame.shape[1] and 0 <= y < frame.shape[0]:
                     frame[y, x] = (255, 0, 0)  # 蓝色中心线
+                    if idx == len(center_line_points) // 2:  # 中间点作为标签位置
+                        label_pos = (x, y)
+
+            # 在中心线中间位置绘制标签
+            if label_pos:
+                label = f"C{i}"  # 中心线编号
+                cv2.putText(
+                    frame,
+                    label,
+                    (label_pos[0], label_pos[1] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (0, 255, 255),  # 黄色标签
+                    2,
+                )
 
         fps = 1 / (time.time() - prev_time)
         prev_time = time.time()
