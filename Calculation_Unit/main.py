@@ -1,11 +1,12 @@
 import time
-import cv2
 import torch
+import cv2
 from config.settings import Config
-from models.yolo_processor import YOLOProcessor
-from utils.image_processing import Utils
-from utils.video_stream import VideoProcessor
-from processors.nms import apply_nms
+from utils.image_utils import ImageUtils
+from processing.yolov8_processor import YOLOProcessor
+from processing.video_stream import VideoStream
+from processing.lane_fitting import LaneFitting
+from visualization.display import Display
 
 
 def main():
@@ -13,44 +14,29 @@ def main():
     yolo_processor = YOLOProcessor(
         Config.MODEL_PATH, Config.CONF_THRESH, Config.IMG_SIZE, device
     )
-    video_processor = VideoProcessor(Config.INPUT_SOURCE)
 
-    prev_time, fps_list = time.time(), []
+    cap = cv2.VideoCapture(Config.INPUT_SOURCE)
+    Display.initialize_window(
+        "YOLOv8 Instance Segmentation with Centerline",
+        Config.IMG_SIZE,
+        int(Config.IMG_SIZE * 0.75),
+    )
 
     while True:
-        ret, frame = video_processor.read_frame()
+        ret, frame = cap.read()
         if not ret:
             break
+        frame = ImageUtils.resize_frame(frame, Config.IMG_SIZE)
 
         results = yolo_processor.infer(frame)
-        filtered_boxes, filtered_scores, filtered_masks, filtered_classes = apply_nms(
-            results
-        )
+        # TODO: Add processing steps here
 
-        # 绘制推理结果（简化）
-        for i, box in enumerate(filtered_boxes):
-            x1, y1, x2, y2 = map(int, box)
-            class_id = filtered_classes[i]
-            color = Config.COLOR_MAP[class_id]
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-
-        fps = 1 / (time.time() - prev_time)
-        prev_time = time.time()
-        cv2.putText(
-            frame,
-            f"FPS: {fps:.2f}",
-            (10, 20),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (0, 255, 255),
-            2,
-        )
-        cv2.imshow("YOLOv8 Instance Segmentation", frame)
-
+        Display.show_frame("YOLOv8 Instance Segmentation with Centerline", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
-    video_processor.release()
+    cap.release()
+    cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
