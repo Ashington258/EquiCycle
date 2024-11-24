@@ -235,6 +235,11 @@ def main():
         if not ret:
             break
 
+        # 绘制参考线
+        ref_line_x = Config.IMG_SIZE // 2  # 竖线的 x 坐标
+        y_start, y_end = 280, 320  # 竖线的起始和结束 y 坐标
+        cv2.line(frame, (ref_line_x, y_start), (ref_line_x, y_end), (0, 255, 0), 2)
+
         results = yolo_processor.infer(frame)
         filtered_boxes, filtered_scores, filtered_masks, filtered_classes = apply_nms(
             results
