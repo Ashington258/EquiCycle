@@ -73,6 +73,9 @@ v_real = 0
 Stand_time = 2250 # 5ms计数器加一，2000为10s
 class CascadedPIDController:
     def __init__(self):
+        self.offset_angle = 1.7  # 初始值
+        self.pulse_value = 0  # 添加 pulse_value 属性
+        
         self.gyro_pid = PIDController(kp=3.17, ki=0, kd=0,limit = 0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
         self.angle_pid = PIDController(kp=4.5, ki=0.000017, kd=2.57,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
         self.velocity_pid = PIDController(kp=-0.095, ki=-0.00117, kd=-0,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
@@ -80,6 +83,10 @@ class CascadedPIDController:
         self.gyro_update_counter = 0
         self.angle_control_signal = 0
         self.velocity_control_signal = 0
+     def update_pulse_value(self, new_value):
+        # 更新 offset_angle
+        self.offset_angle += 0.0000001 * (new_value - 978)
+        self.pulse_value = new_value  # 更新 pulse_value
 
     def update(self, current_angular_velocity, current_angle, current_velocity):
         if self.gyro_update_counter % 4 == 0:

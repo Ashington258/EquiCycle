@@ -7,11 +7,14 @@ from self_check.self_check import self_check
 from ch100_protocol.ch100_protocol import CH100Device
 from odrive_protocol.odrive_protocol import ODriveAsciiProtocol
 from balance_control.balance_control import control_layer  # 导入 control_layer 函数
+from balance_control.balance_control import CascadePIDclass
 from directional_control.directional_control import (
     DirectionalControl,
 )  # 导入 DirectionalControl 类
 import socket
 import serial
+
+CascadePIDclass = CascadedPIDController()
 
 # 移除所有的日志处理程序，关闭日志模块
 logging.getLogger().handlers.clear()
@@ -123,6 +126,8 @@ def servo_listener():
                 # 解析数据协议并更新脉冲值
                 pulse_value = directional_control.parse_protocol(data)
                 if pulse_value is not None:
+                    # 更新 offset_angle
+                    CascadePIDclass.update_pulse_value(pulse_value)
                     # 将数据转发到串口
                     ser.write(data)
                     print("接收到的数据帧:", [hex(x) for x in data])
