@@ -13,7 +13,7 @@ class Config:
     """配置参数类"""
 
     MODEL_PATH = "calculate_unit/Host/src/beta/model/100_LaneSeg.pt"
-    INPUT_SOURCE = "dataset/video/完整测试视频.mp4"  # 可以是视频路径、摄像头ID或URL
+    INPUT_SOURCE = "dataset/video/1280.mp4"  # 可以是视频路径、摄像头ID或URL
     CONF_THRESH = 0.25
     IMG_SIZE = 1280
     ROI_TOP_LEFT_RATIO = (0, 0.0)
