@@ -1,14 +1,15 @@
+CLASS_NAMES = ["Lane", "Roadblock", "Zebra Crossing", "Turn Left", "Turn Right"]
+
 import cv2
 import numpy as np
 import torch
 from ultralytics import YOLO
 from skimage.morphology import skeletonize
 from collections import defaultdict
+import time
 
 
 class Config:
-    """配置参数"""
-
     MODEL_PATH = "analysis/model/100_LaneSeg.pt"
     INPUT_SOURCE = "dataset/video/1280.mp4"
     CONF_THRESH = 0.45
@@ -18,11 +19,8 @@ class Config:
 
 
 class Utils:
-    """通用工具类"""
-
     @staticmethod
     def resize_frame(frame, target_width):
-        """调整帧的尺寸，保持宽高比"""
         height, width = frame.shape[:2]
         scale = target_width / width
         target_height = int(height * scale)
@@ -32,7 +30,6 @@ class Utils:
 
     @staticmethod
     def process_mask(mask):
-        """对二值化的车道线进行骨架化和形态学处理"""
         binary = (mask / 255).astype(np.uint8)
         skeleton = skeletonize(binary).astype(np.uint8) * 255
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
@@ -40,8 +37,6 @@ class Utils:
 
 
 class YOLOProcessor:
-    """YOLO 模型处理类"""
-
     def __init__(self, model_path, conf_thresh, img_size, device):
         self.device = device
         self.model = YOLO(model_path).to(device)
@@ -49,16 +44,12 @@ class YOLOProcessor:
         self.model.imgsz = img_size
 
     def infer(self, frame):
-        """对单帧进行推理"""
         return self.model(frame, device=self.device, verbose=False)
 
 
 class LaneDetector:
-    """车道线检测与拟合"""
-
     @staticmethod
     def group_and_fit_skeleton(skeleton):
-        """对骨架点进行分组并拟合"""
         data_points = np.column_stack(np.where(skeleton == 255))
         lines = cv2.HoughLinesP(
             skeleton, 1, np.pi / 180, threshold=50, minLineLength=87, maxLineGap=50
@@ -90,7 +81,6 @@ class LaneDetector:
 
     @staticmethod
     def visualize_fit(frame, skeleton, categories, fit_results):
-        """可视化骨架点及拟合曲线"""
         for label, points in categories.items():
             points = np.array(points)
             for point in points:
@@ -107,29 +97,23 @@ class LaneDetector:
 
 
 class VideoProcessor:
-    """视频输入与输出管理"""
-
     def __init__(self, input_source):
         self.cap = cv2.VideoCapture(input_source)
         if not self.cap.isOpened():
             raise ValueError(f"无法打开输入源: {input_source}")
-
         self._initialize_display_window()
 
     def _initialize_display_window(self):
-        """初始化显示窗口"""
         cv2.namedWindow("Lane Detection", cv2.WINDOW_NORMAL)
         cv2.resizeWindow("Lane Detection", Config.IMG_SIZE, int(Config.IMG_SIZE * 0.75))
 
     def read_frame(self):
-        """读取帧并调整尺寸"""
         ret, frame = self.cap.read()
         if ret:
             frame = Utils.resize_frame(frame, Config.IMG_SIZE)
         return ret, frame
 
     def release(self):
-        """释放视频资源"""
         self.cap.release()
         cv2.destroyAllWindows()
 
@@ -140,6 +124,7 @@ def main():
         Config.MODEL_PATH, Config.CONF_THRESH, Config.IMG_SIZE, device
     )
     video_processor = VideoProcessor(Config.INPUT_SOURCE)
+    fps_start_time = time.time()
 
     while True:
         ret, frame = video_processor.read_frame()
@@ -147,6 +132,21 @@ def main():
             break
 
         results = yolo_processor.infer(frame)
+        for result in results[0].boxes:
+            box, score, cls = result.xyxy, result.conf.item(), result.cls.item()
+            x1, y1, x2, y2 = map(int, box[0])
+            label = f"{CLASS_NAMES[int(cls)]} {score:.2f}"
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(
+                frame,
+                label,
+                (x1, y1 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 255),
+                1,
+            )
+
         if results[0].masks is not None:
             masks = results[0].masks.data.cpu().numpy()
             skeleton_combined = np.zeros_like(masks[0], dtype=np.uint8)
@@ -161,6 +161,18 @@ def main():
             LaneDetector.visualize_fit(
                 frame, skeleton_combined, categories, fit_results
             )
+
+        fps = 1 / (time.time() - fps_start_time)
+        fps_start_time = time.time()
+        cv2.putText(
+            frame,
+            f"FPS: {fps:.2f}",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (255, 0, 0),
+            2,
+        )
 
         cv2.imshow("Lane Detection", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
