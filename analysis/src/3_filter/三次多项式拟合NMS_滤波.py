@@ -6,7 +6,7 @@ import torch
 import requests
 import threading
 from skimage.morphology import skeletonize
-
+from sklearn.neighbors import LocalOutlierFactor
 
 class Config:
     """配置参数类"""
@@ -179,17 +179,38 @@ def apply_nms(results, iou_threshold=0.4):
 
 
 def fit_lane_points_and_draw(frame, skeleton, color=(0, 0, 255)):
-    """对骨架点拟合三次多项式并绘制拟合曲线"""
+    """对骨架点拟合三次多项式并绘制拟合曲线，去除离群点"""
+    # 获取骨架点的坐标
     y_coords, x_coords = np.where(skeleton > 0)
-    if len(x_coords) < 4:
+    if len(x_coords) < 4:  # 如果点太少，跳过处理
         return frame
+
+    # 组装坐标点数组
+    points = np.column_stack((y_coords, x_coords))
+
+    # 使用 Local Outlier Factor (LOF) 检测离群点
+    lof = LocalOutlierFactor(n_neighbors=20, contamination=0.2)  # 可调整参数
+    is_inlier = lof.fit_predict(points) == 1  # 1 表示非离群点，-1 表示离群点
+
+    # 筛选出非离群点
+    filtered_points = points[is_inlier]
+    if len(filtered_points) < 4:  # 再次检查点数是否足够
+        return frame
+
+    # 分离出过滤后的 x 和 y 坐标
+    y_coords, x_coords = filtered_points[:, 0], filtered_points[:, 1]
+
+    # 拟合三次多项式
     poly_func = np.poly1d(np.polyfit(y_coords, x_coords, 3))
+
+    # 绘制拟合曲线
     for y, x in zip(
         np.linspace(min(y_coords), max(y_coords), num=500).astype(int),
         poly_func(np.linspace(min(y_coords), max(y_coords), num=500)).astype(int),
     ):
         if 0 <= x < frame.shape[1] and 0 <= y < frame.shape[0]:
-            frame[y, x] = color
+            frame[y, x] = color  # 在图像上绘制点
+
     return frame
 
 
