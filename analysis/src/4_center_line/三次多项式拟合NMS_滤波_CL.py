@@ -319,6 +319,11 @@ def main():
             x_vals_center = (x_vals1 + x_vals2) / 2
             center_line_points = np.array([x_vals_center, y_vals]).T.astype(int)
 
+            # if i == 1:
+            #     # TODO计算中心线 C1 对参考线 C1_ref_line_x 的纵坐标差值
+
+
+
             # 绘制中心线并添加编号
             label_pos = None  # 记录标签位置
             for idx, point in enumerate(center_line_points):
