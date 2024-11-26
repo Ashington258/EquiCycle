@@ -17,8 +17,8 @@ class Config:
     INPUT_SOURCE = "dataset/video/1280.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     CONF_THRESH = 0.65  # 置信度阈值
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
-    ROI_TOP_LEFT_RATIO = (0, 0.35)
-    ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
+
+    HORIZONTAL_LINE_Y = 280  # 横线的Y坐标
 
     # 定义类别名称
     CLASS_NAMES = [
@@ -226,13 +226,7 @@ def main():
     fps_list = []
 
     class_names = Config.CLASS_NAMES
-    color_map = [
-        (255, 0, 0),
-        (0, 255, 0),
-        (0, 0, 255),
-        (255, 255, 0),
-        (255, 0, 255),
-    ]
+    horizontal_line_y = Config.HORIZONTAL_LINE_Y  # 从配置中获取横线Y坐标
 
     while True:
         ret, frame = video_processor.read_frame()
@@ -244,7 +238,6 @@ def main():
             results
         )
 
-        horizontal_line_y = 280  # 定义横线Y坐标
         cv2.line(
             frame,
             (0, horizontal_line_y),
