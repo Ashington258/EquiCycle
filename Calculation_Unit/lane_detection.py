@@ -19,6 +19,8 @@ class Config:
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
 
     HORIZONTAL_LINE_Y = 280  # 横线的Y坐标
+    TARGET_X = 320  # 目标的 X 坐标（可以根据实际需求调整）
+    R = 150  # 调节舵机力度的参数，越大舵机力度越小
 
     # 定义类别名称
     CLASS_NAMES = [
@@ -227,6 +229,8 @@ def main():
 
     class_names = Config.CLASS_NAMES
     horizontal_line_y = Config.HORIZONTAL_LINE_Y  # 从配置中获取横线Y坐标
+    target_x = Config.TARGET_X  # 目标X坐标
+    R = Config.R  # 舵机力度调节参数
 
     while True:
         ret, frame = video_processor.read_frame()
@@ -304,7 +308,11 @@ def main():
             center_x = int((intersection_points[0][0] + intersection_points[1][0]) / 2)
             center_y = int(horizontal_line_y)
 
-            # TODO 计算center_x和期望的差值
+            # 计算center_x与target_x的差值
+            difference = center_x - target_x
+
+            # 计算舵机角度
+            theta = np.arctan(difference / R)  # 使用反正切计算角度
 
             # 绘制中心点
             cv2.circle(frame, (center_x, center_y), 8, (0, 0, 255), -1)  # 红色中心点
@@ -315,6 +323,18 @@ def main():
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
                 (0, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
+
+            # 显示差值和舵机角度
+            cv2.putText(
+                frame,
+                f"Diff: {difference}, Theta: {np.degrees(theta):.2f}°",
+                (center_x + 10, center_y + 20),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 0),
                 2,
                 cv2.LINE_AA,
             )
