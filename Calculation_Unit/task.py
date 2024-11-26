@@ -148,25 +148,6 @@ class VideoStream:
         self.running = False
 
 class StateMachine:
-    """状态机类"""
-    def __init__(self):
-        self.state = "IDLE"  # 初始状态
-
-    def transition(self, detections):
-        """根据检测结果进行状态转换"""
-        if "cone" in detections:
-            self.state = "DETECTED_CONE"
-        elif "zebra" in detections:
-            self.state = "DETECTED_ZEBRA"
-        elif "turn_sign" in detections:
-            self.state = "DETECTED_TURN_SIGN"
-        else:
-            self.state = "IDLE"
-
-    def get_state(self):
-        return self.state
-
-class StateMachine:
     """状态机类，执行任务代码"""
     def __init__(self):
         self.state = "IDLE"  # 初始状态
