@@ -7,17 +7,27 @@ import requests
 import threading
 import matplotlib.pyplot as plt
 from skimage.morphology import skeletonize
+from skimage.util import img_as_ubyte
 
 
 class Config:
     """配置参数类"""
 
-    MODEL_PATH = "analysis/model/equicycle.pt"
+    MODEL_PATH = "analysis/model/new.pt"
     INPUT_SOURCE = "dataset/video/1280.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     CONF_THRESH = 0.65  # 置信度阈值
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
     ROI_TOP_LEFT_RATIO = (0, 0.35)
     ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
+
+    # 定义类别名称
+    CLASS_NAMES = [
+        "__background__",  # 替换为实际类别名
+        "L 0",
+        "L 1",
+        "R 0",
+        "R 1",
+    ]
 
 
 class Utils:
@@ -164,7 +174,7 @@ def apply_nms(results, iou_threshold=0.5):
     """应用NMS过滤边界框和分割掩膜"""
     boxes = results[0].boxes.xyxy.cpu().numpy()
     scores = results[0].boxes.conf.cpu().numpy()
-    classes = results[0].boxes.cls.cpu().numpy().astype(int)
+    classes = results[0].boxes.cls.cpu().numpy().astype(int)  # 获取类别索引
     masks = results[0].masks
 
     if masks is None:
@@ -181,7 +191,7 @@ def apply_nms(results, iou_threshold=0.5):
         selected_indices = list(indices)
         filtered_boxes = boxes[selected_indices]
         filtered_scores = scores[selected_indices]
-        filtered_classes = classes[selected_indices]
+        filtered_classes = classes[selected_indices]  # 添加类别
         return filtered_boxes, filtered_scores, None, filtered_classes
 
     masks = masks.data.cpu().numpy()
@@ -199,7 +209,7 @@ def apply_nms(results, iou_threshold=0.5):
     selected_indices = list(indices)
     filtered_boxes = boxes[selected_indices]
     filtered_scores = scores[selected_indices]
-    filtered_classes = classes[selected_indices]
+    filtered_classes = classes[selected_indices]  # 添加类别
     filtered_masks = masks[selected_indices]
 
     return filtered_boxes, filtered_scores, filtered_masks, filtered_classes
