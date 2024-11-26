@@ -12,7 +12,7 @@ from sklearn.neighbors import LocalOutlierFactor
 class Config:
     """配置参数类"""
 
-    MODEL_PATH = "analysis/model/equicycle.pt"
+    MODEL_PATH = "analysis/model/last.pt"
     INPUT_SOURCE = "dataset/video/1280.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     CONF_THRESH = 0.65  # 置信度阈值
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
@@ -321,8 +321,6 @@ def main():
 
             # if i == 1:
             #     # TODO计算中心线 C1 对参考线 C1_ref_line_x 的纵坐标差值
-
-
 
             # 绘制中心线并添加编号
             label_pos = None  # 记录标签位置
