@@ -3,11 +3,16 @@ import socket
 
 
 class DirectionalControl:
-    def __init__(self, udp_ip="127.0.0.1", udp_port=12345):
+
+    def __init__(
+        self, udp_ip="192.168.2.113", udp_port=5000, min_pulse=800, max_pulse=1800
+    ):
         self.pulse_value = None
         self.lock = threading.Lock()  # 用于线程安全
         self.udp_ip = udp_ip
         self.udp_port = udp_port
+        self.min_pulse = min_pulse  # 最小脉冲宽度
+        self.max_pulse = max_pulse  # 最大脉冲宽度
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # 创建 UDP 套接字
 
     def parse_protocol(self, data):
@@ -50,6 +55,9 @@ class DirectionalControl:
         """
         构建协议数据帧
         """
+        # 限制脉冲宽度在最小和最大值之间
+        pulse_width = max(self.min_pulse, min(self.max_pulse, pulse_width))
+
         # 帧头和帧尾
         frame_header = 0x30
         frame_footer = 0x40
@@ -70,6 +78,10 @@ class DirectionalControl:
         """
         构建并通过 UDP 发送协议帧
         """
+        # 限制脉冲宽度在最小和最大值之间
+        pulse_width = max(self.min_pulse, min(self.max_pulse, pulse_width))
+
+        # 构建协议帧
         protocol_frame = self.build_protocol_frame(pulse_width)
 
         # 将协议帧转换为字节数组
