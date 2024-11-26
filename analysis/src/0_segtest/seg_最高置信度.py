@@ -276,3 +276,211 @@ def main():
 
 if __name__ == "__main__":
     main()
+import cv2
+import time
+import numpy as np
+from ultralytics import YOLO
+import torch
+import requests
+import threading
+import matplotlib.pyplot as plt
+
+
+class Config:
+    """配置参数类"""
+
+    MODEL_PATH = "analysis/model/lane.pt"
+    INPUT_SOURCE = "dataset/video/1280.mp4"
+    CONF_THRESH = 0.65
+    IMG_SIZE = 640
+    ROI_TOP_LEFT_RATIO = (0, 0.35)
+    ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
+    LABELS = {0: "Background", 1: "L0", 2: "L1", 3: "R0", 4: "R1"}
+
+
+class Utils:
+    """通用工具类"""
+
+    @staticmethod
+    def resize_frame(frame, target_width):
+        """调整帧的尺寸，保持宽高比"""
+        height, width = frame.shape[:2]
+        scale = target_width / width
+        target_height = int(height * scale)
+        return cv2.resize(
+            frame, (target_width, target_height), interpolation=cv2.INTER_LINEAR
+        )
+
+
+class YOLOProcessor:
+    """YOLO模型处理类"""
+
+    def __init__(self, model_path, conf_thresh, img_size, device):
+        try:
+            self.device = device
+            self.model = YOLO(model_path).to(self.device)
+            self.model.conf = conf_thresh
+            self.model.imgsz = img_size
+        except Exception as e:
+            raise RuntimeError(f"模型加载失败: {e}")
+
+    def infer(self, frame):
+        """对单帧进行推理"""
+        try:
+            return self.model(frame, device=self.device, verbose=False)
+        except Exception as e:
+            print(f"推理失败: {e}")
+            return []
+
+
+class VideoProcessor:
+    """视频处理类"""
+
+    def __init__(self, input_source):
+        self.input_source = input_source
+        self.cap = None
+        self.image = None
+        self._initialize_input()
+        self._initialize_display_window()
+
+    def _initialize_input(self):
+        """初始化输入源"""
+        if isinstance(self.input_source, str):
+            if self.input_source.startswith(("http://", "https://")):
+                self.stream = VideoStream(self.input_source)
+            elif self.input_source.lower().endswith((".jpg", ".jpeg", ".png")):
+                self.image = cv2.imread(self.input_source)
+            else:
+                self.cap = cv2.VideoCapture(self.input_source)
+                if not self.cap.isOpened():
+                    raise ValueError(f"无法打开视频文件: {self.input_source}")
+        elif isinstance(self.input_source, int):
+            self.cap = cv2.VideoCapture(self.input_source)
+            if not self.cap.isOpened():
+                raise ValueError(f"无法打开摄像头: {self.input_source}")
+        else:
+            raise ValueError("未知的输入源类型")
+
+    def _initialize_display_window(self):
+        """初始化显示窗口"""
+        cv2.namedWindow("YOLOv8", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("YOLOv8", Config.IMG_SIZE, int(Config.IMG_SIZE * 0.75))
+
+    def read_frame(self):
+        """读取下一帧并调整尺寸"""
+        if self.image is not None:
+            return True, Utils.resize_frame(self.image, Config.IMG_SIZE)
+        if self.cap:
+            ret, frame = self.cap.read()
+            return ret, (
+                Utils.resize_frame(frame, Config.IMG_SIZE) if ret else (False, None)
+            )
+        if self.stream:
+            frame = self.stream.get_frame()
+            return frame is not None, Utils.resize_frame(frame, Config.IMG_SIZE)
+        return False, None
+
+    def release(self):
+        """释放资源"""
+        if self.cap:
+            self.cap.release()
+        if self.stream:
+            self.stream.stop()
+        cv2.destroyAllWindows()
+
+
+class VideoStream:
+    """网络视频流处理类"""
+
+    def __init__(self, url):
+        self.url = url
+        self.frame = None
+        self.running = True
+        self.thread = threading.Thread(target=self._read_stream, daemon=True)
+        self.thread.start()
+
+    def _read_stream(self):
+        try:
+            response = requests.get(self.url, stream=True)
+            if response.status_code != 200:
+                raise ConnectionError("无法连接到视频流")
+            buffer = b""
+            for chunk in response.iter_content(chunk_size=4096):
+                buffer += chunk
+                a = buffer.find(b"\xff\xd8")
+                b = buffer.find(b"\xff\xd9")
+                if a != -1 and b != -1:
+                    jpg = buffer[a : b + 2]
+                    buffer = buffer[b + 2 :]
+                    self.frame = cv2.imdecode(
+                        np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR
+                    )
+        except Exception as e:
+            print(f"流读取失败: {e}")
+            self.running = False
+
+    def get_frame(self):
+        return self.frame
+
+    def stop(self):
+        self.running = False
+
+
+def main():
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    yolo_processor = YOLOProcessor(
+        Config.MODEL_PATH, Config.CONF_THRESH, Config.IMG_SIZE, device
+    )
+    video_processor = VideoProcessor(Config.INPUT_SOURCE)
+
+    fps_list = []
+    prev_time = time.time()
+
+    while True:
+        ret, frame = video_processor.read_frame()
+        if not ret:
+            break
+
+        results = yolo_processor.infer(frame)
+        for result in results:
+            for box in result.boxes.data.tolist():
+                x1, y1, x2, y2, conf, class_id = map(int, box[:6])
+                label_name = Config.LABELS.get(class_id, "Unknown")
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.putText(
+                    frame,
+                    f"{label_name}: {conf:.2f}",
+                    (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 0),
+                    2,
+                )
+
+        current_time = time.time()
+        fps = 1 / (current_time - prev_time) if current_time != prev_time else 0
+        prev_time = current_time
+        fps_list.append(fps)
+
+        cv2.putText(
+            frame,
+            f"FPS: {fps:.2f}",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 0),
+            2,
+        )
+        cv2.imshow("YOLOv8", frame)
+
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
+
+    avg_fps = sum(fps_list) / len(fps_list) if fps_list else 0
+    print(f"平均帧率: {avg_fps:.2f}")
+
+    video_processor.release()
+
+
+if __name__ == "__main__":
+    main()
