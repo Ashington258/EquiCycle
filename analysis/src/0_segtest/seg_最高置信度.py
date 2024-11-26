@@ -18,6 +18,13 @@ class Config:
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
     ROI_TOP_LEFT_RATIO = (0, 0.35)
     ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
+    LABELS = {
+        0: "Background",
+        1: "L0",
+        2: "L1",
+        3: "R0",
+        4: "R1",
+    }
 
 
 class Utils:
@@ -197,10 +204,11 @@ def main():
         # 绘制唯一检测结果和掩膜
         for class_id, (box, confidence) in unique_detections.items():
             x1, y1, x2, y2 = map(int, box)
+            label_name = Config.LABELS.get(class_id, "Unknown")  # 获取标签名称
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(
                 frame,
-                f"Class {class_id}: {confidence:.2f}",
+                f"{label_name}: {confidence:.2f}",
                 (x1, y1 - 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
