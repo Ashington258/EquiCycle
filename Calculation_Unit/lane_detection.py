@@ -8,6 +8,10 @@ import threading
 import matplotlib.pyplot as plt
 from skimage.morphology import skeletonize
 from skimage.util import img_as_ubyte
+from directional_control import DirectionalControl
+
+# Initialize the DirectionalControl module
+directional_control = DirectionalControl()
 
 
 class Config:
@@ -218,6 +222,9 @@ def apply_nms(results, iou_threshold=0.5):
     return filtered_boxes, filtered_scores, filtered_masks, filtered_classes
 
 
+from directional_control import DirectionalControl  # 导入模块
+
+
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_processor = YOLOProcessor(
@@ -233,6 +240,9 @@ def main():
     target_x = Config.TARGET_X  # 目标X坐标
     R = Config.R  # 舵机力度调节参数
     servo_midpoint = Config.SERVO_MIDPOINT  # 舵机中值脉冲宽度
+
+    # 实例化 DirectionalControl 对象
+    directional_control = DirectionalControl()
 
     while True:
         ret, frame = video_processor.read_frame()
@@ -320,6 +330,12 @@ def main():
             pulse_width = int(
                 abs((200 / 27) * np.degrees(theta)) + servo_midpoint
             )  # 取整并加入中值
+
+            # 使用 DirectionalControl 的 build_protocol_frame 构建协议帧
+            protocol_frame = directional_control.build_protocol_frame(pulse_width)
+
+            # 模拟发送或解析协议帧
+            print(f"发送的协议帧: {protocol_frame}")
 
             # 绘制中心点
             cv2.circle(frame, (center_x, center_y), 8, (0, 0, 255), -1)  # 红色中心点
