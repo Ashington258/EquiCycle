@@ -332,10 +332,11 @@ def main():
             )  # 取整并加入中值
 
             # 使用 DirectionalControl 的 build_protocol_frame 构建协议帧
-            protocol_frame = directional_control.build_protocol_frame(pulse_width)
-
+            # protocol_frame = directional_control.build_protocol_frame(pulse_width)
+            # 使用UDP方法发送舵机控制流
+            directional_control.send_protocol_frame_udp(pulse_width)
             # 模拟发送或解析协议帧
-            print(f"发送的协议帧: {protocol_frame}")
+            # print(f"发送的协议帧: {protocol_frame}")
 
             # 绘制中心点
             cv2.circle(frame, (center_x, center_y), 8, (0, 0, 255), -1)  # 红色中心点
