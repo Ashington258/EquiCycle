@@ -20,7 +20,8 @@ class Config:
 
     HORIZONTAL_LINE_Y = 280  # 横线的Y坐标
     TARGET_X = 320  # 目标的 X 坐标（可以根据实际需求调整）
-    R = 150  # 调节舵机力度的参数，越大舵机力度越小
+    R = 250  # 调节舵机力度的参数，越大舵机力度越小
+    SERVO_MIDPOINT = 960  # 舵机中值脉冲宽度
 
     # 定义类别名称
     CLASS_NAMES = [
@@ -228,9 +229,10 @@ def main():
     fps_list = []
 
     class_names = Config.CLASS_NAMES
-    horizontal_line_y = Config.HORIZONTAL_LINE_Y  # 从配置中获取横线Y坐标
+    horizontal_line_y = Config.HORIZONTAL_LINE_Y  # 横线的Y坐标
     target_x = Config.TARGET_X  # 目标X坐标
     R = Config.R  # 舵机力度调节参数
+    servo_midpoint = Config.SERVO_MIDPOINT  # 舵机中值脉冲宽度
 
     while True:
         ret, frame = video_processor.read_frame()
@@ -314,6 +316,11 @@ def main():
             # 计算舵机角度
             theta = np.arctan(difference / R)  # 使用反正切计算角度
 
+            # 映射角度到脉冲宽度（包含中值）
+            pulse_width = int(
+                abs((200 / 27) * np.degrees(theta)) + servo_midpoint
+            )  # 取整并加入中值
+
             # 绘制中心点
             cv2.circle(frame, (center_x, center_y), 8, (0, 0, 255), -1)  # 红色中心点
             cv2.putText(
@@ -335,6 +342,18 @@ def main():
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
                 (255, 255, 0),
+                2,
+                cv2.LINE_AA,
+            )
+
+            # 显示脉冲宽度
+            cv2.putText(
+                frame,
+                f"Pulse: {pulse_width}",
+                (center_x + 10, center_y + 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 0, 255),
                 2,
                 cv2.LINE_AA,
             )
