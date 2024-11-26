@@ -13,7 +13,7 @@ from skimage.util import img_as_ubyte
 class Config:
     """配置参数类"""
 
-    MODEL_PATH = "analysis/model/lane.pt"
+    MODEL_PATH = "Calculation_Unit/model/lane.pt"
     INPUT_SOURCE = "dataset/video/1280.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     CONF_THRESH = 0.65  # 置信度阈值
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
@@ -303,6 +303,8 @@ def main():
         if len(intersection_points) == 2:
             center_x = int((intersection_points[0][0] + intersection_points[1][0]) / 2)
             center_y = int(horizontal_line_y)
+
+            # TODO 计算center_x和期望的差值
 
             # 绘制中心点
             cv2.circle(frame, (center_x, center_y), 8, (0, 0, 255), -1)  # 红色中心点
