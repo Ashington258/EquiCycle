@@ -12,7 +12,7 @@ from skimage.morphology import skeletonize
 class Config:
     """配置参数类"""
 
-    MODEL_PATH = "analysis/model/lane.pt"
+    MODEL_PATH = "analysis/model/equicycle.pt"
     INPUT_SOURCE = "dataset/video/1280.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     CONF_THRESH = 0.65  # 置信度阈值
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
@@ -160,67 +160,52 @@ class VideoStream:
         self.running = False
 
 
-def apply_nms_to_masks(masks, scores, iou_threshold=0.5):
-    """
-    对分割结果应用非极大值抑制 (NMS)。
-
-    :param masks: numpy数组，包含多个二值掩膜，形状为 (N, H, W)，N为类别数。
-    :param scores: 每个掩膜的置信度分数，形状为 (N,)。
-    :param iou_threshold: IoU阈值，用于确定是否去除重叠。
-    :return: 保留的掩膜索引列表。
-    """
-    keep_indices = []
-    used = set()
-    num_masks = len(scores)
-
-    for i in range(num_masks):
-        if i in used:
-            continue
-        keep_indices.append(i)
-        used.add(i)
-        for j in range(i + 1, num_masks):
-            if j in used:
-                continue
-            iou = compute_iou(masks[i], masks[j])
-            if iou > iou_threshold:
-                used.add(j)
-    return keep_indices
-
-
-def compute_iou(mask1, mask2):
-    """
-    计算两个掩膜的IoU（交并比）。
-
-    :param mask1: 第一个二值掩膜。
-    :param mask2: 第二个二值掩膜。
-    :return: IoU值。
-    """
-    intersection = np.logical_and(mask1, mask2).sum()
-    union = np.logical_or(mask1, mask2).sum()
-    return intersection / union if union > 0 else 0.0
-
-
-def process_masks_with_nms(results, iou_threshold=0.5):
-    if not results or not hasattr(results[0], "masks") or not results[0].masks:
-        print("No masks detected in the results.")
-        return results  # 返回原始结果，避免后续报错
-
+def apply_nms(results, iou_threshold=0.5):
+    """应用NMS过滤边界框和分割掩膜"""
+    boxes = results[0].boxes.xyxy.cpu().numpy()
+    scores = results[0].boxes.conf.cpu().numpy()
+    classes = results[0].boxes.cls.cpu().numpy().astype(int)
     masks = results[0].masks
-    scores = results[0].probs
 
-    if masks is None or scores is None:
-        print("No valid masks or scores in results.")
-        return results  # 同样返回原始结果
+    if masks is None:
+        indices = cv2.dnn.NMSBoxes(
+            boxes.tolist(),
+            scores.tolist(),
+            score_threshold=0.0,
+            nms_threshold=iou_threshold,
+        )
+        if indices is None or len(indices) == 0:
+            return [], [], None, []
 
-    keep_indices = apply_nms_to_masks(masks, scores, iou_threshold)
-    results[0].masks = [masks[i] for i in keep_indices]
-    results[0].probs = [scores[i] for i in keep_indices]
-    results[0].classes = [results[0].classes[i] for i in keep_indices]
-    return results
+        indices = indices.flatten() if isinstance(indices, np.ndarray) else indices
+        selected_indices = list(indices)
+        filtered_boxes = boxes[selected_indices]
+        filtered_scores = scores[selected_indices]
+        filtered_classes = classes[selected_indices]
+        return filtered_boxes, filtered_scores, None, filtered_classes
+
+    masks = masks.data.cpu().numpy()
+    indices = cv2.dnn.NMSBoxes(
+        boxes.tolist(),
+        scores.tolist(),
+        score_threshold=0.0,
+        nms_threshold=iou_threshold,
+    )
+
+    if indices is None or len(indices) == 0:
+        return [], [], [], []
+
+    indices = indices.flatten() if isinstance(indices, np.ndarray) else indices
+    selected_indices = list(indices)
+    filtered_boxes = boxes[selected_indices]
+    filtered_scores = scores[selected_indices]
+    filtered_classes = classes[selected_indices]
+    filtered_masks = masks[selected_indices]
+
+    return filtered_boxes, filtered_scores, filtered_masks, filtered_classes
 
 
 def main():
-    # 初始化配置
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_processor = YOLOProcessor(
         Config.MODEL_PATH, Config.CONF_THRESH, Config.IMG_SIZE, device
@@ -230,24 +215,73 @@ def main():
     prev_time = time.time()
     fps_list = []
 
+    # 使用配置中的类别名称
+    class_names = Config.CLASS_NAMES
+
+    # 定义颜色映射（五种颜色）
+    color_map = [
+        (255, 0, 0),  # 红色
+        (0, 255, 0),  # 绿色
+        (0, 0, 255),  # 蓝色
+        (255, 255, 0),  # 黄色
+        (255, 0, 255),  # 品红
+    ]
+
     while True:
         ret, frame = video_processor.read_frame()
         if not ret:
             break
 
-        # YOLO推理
         results = yolo_processor.infer(frame)
+        filtered_boxes, filtered_scores, filtered_masks, filtered_classes = apply_nms(
+            results
+        )
 
-        # 对掩膜应用NMS
-        results = process_masks_with_nms(results, iou_threshold=0.5)
+        for i, box in enumerate(filtered_boxes):
+            x1, y1, x2, y2 = map(int, box)
+            class_id = filtered_classes[i]
+            score = filtered_scores[i]
+            label = f"{class_names[class_id]}: {score:.2f}"  # 标签显示内容
 
-        # 计算FPS
+            # 绘制边界框
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+            # 显示类别标签和置信度
+            cv2.putText(
+                frame,
+                label,
+                (x1, y1 - 10),  # 标签位置（框上方）
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 255),  # 白色文字
+                2,
+                cv2.LINE_AA,
+            )
+
+            # 绘制分割掩膜（如果存在）
+            if filtered_masks is not None:
+                mask = filtered_masks[i]
+                mask_resized = cv2.resize(
+                    mask,
+                    (frame.shape[1], frame.shape[0]),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+
+                # 骨架化处理
+                binary_mask = mask_resized > 0  # 转换为二值图像
+                skeleton = skeletonize(binary_mask)  # 应用骨架化
+                skeleton_overlay = img_as_ubyte(skeleton)  # 转换为8位图像格式
+
+                # 将骨架叠加到原始帧上
+                skeleton_color = np.zeros_like(frame, dtype=np.uint8)
+                skeleton_color[skeleton] = (0, 255, 255)  # 骨架显示为黄色
+                frame = cv2.addWeighted(frame, 1, skeleton_color, 0.8, 0)
+
         current_time = time.time()
         fps = 1 / (current_time - prev_time) if current_time != prev_time else 0
         prev_time = current_time
         fps_list.append(fps)
 
-        # 显示FPS
         cv2.putText(
             frame,
             f"FPS: {fps:.2f}",
@@ -258,14 +292,10 @@ def main():
             2,
         )
 
-        # 显示结果
-        annotated_frame = results[0].plot()
-        cv2.imshow("YOLOv8 Instance Segmentation with Centerline", annotated_frame)
-
+        cv2.imshow("YOLOv8 Instance Segmentation with Centerline", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
-    # 计算平均帧率
     avg_fps = sum(fps_list) / len(fps_list) if fps_list else 0
     print(f"平均帧率: {avg_fps:.2f}")
 

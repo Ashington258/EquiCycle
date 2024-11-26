@@ -16,7 +16,7 @@ class Config:
     INPUT_SOURCE = "dataset/video/1280.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     CONF_THRESH = 0.65  # 置信度阈值
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
-    ROI_TOP_LEFT_RATIO = (0, 0.35)
+    ROI_TOP_LEFT_RATIO = (0, 0.55)
     ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
 
 
@@ -32,6 +32,16 @@ class Utils:
         return cv2.resize(
             frame, (target_width, target_height), interpolation=cv2.INTER_LINEAR
         )
+
+    @staticmethod
+    def crop_roi(frame):
+        """裁剪ROI区域"""
+        height, width = frame.shape[:2]
+        top_left_x = int(Config.ROI_TOP_LEFT_RATIO[0] * width)
+        top_left_y = int(Config.ROI_TOP_LEFT_RATIO[1] * height)
+        bottom_right_x = int(Config.ROI_BOTTOM_RIGHT_RATIO[0] * width)
+        bottom_right_y = int(Config.ROI_BOTTOM_RIGHT_RATIO[1] * height)
+        return frame[top_left_y:bottom_right_y, top_left_x:bottom_right_x]
 
 
 class YOLOProcessor:
@@ -160,52 +170,8 @@ class VideoStream:
         self.running = False
 
 
-def apply_nms(results, iou_threshold=0.5):
-    """应用NMS过滤边界框和分割掩膜"""
-    boxes = results[0].boxes.xyxy.cpu().numpy()
-    scores = results[0].boxes.conf.cpu().numpy()
-    classes = results[0].boxes.cls.cpu().numpy().astype(int)  # 获取类别索引
-    masks = results[0].masks
-
-    if masks is None:
-        indices = cv2.dnn.NMSBoxes(
-            boxes.tolist(),
-            scores.tolist(),
-            score_threshold=0.0,
-            nms_threshold=iou_threshold,
-        )
-        if indices is None or len(indices) == 0:
-            return [], [], None, []
-
-        indices = indices.flatten() if isinstance(indices, np.ndarray) else indices
-        selected_indices = list(indices)
-        filtered_boxes = boxes[selected_indices]
-        filtered_scores = scores[selected_indices]
-        filtered_classes = classes[selected_indices]  # 添加类别
-        return filtered_boxes, filtered_scores, None, filtered_classes
-
-    masks = masks.data.cpu().numpy()
-    indices = cv2.dnn.NMSBoxes(
-        boxes.tolist(),
-        scores.tolist(),
-        score_threshold=0.0,
-        nms_threshold=iou_threshold,
-    )
-
-    if indices is None or len(indices) == 0:
-        return [], [], [], []
-
-    indices = indices.flatten() if isinstance(indices, np.ndarray) else indices
-    selected_indices = list(indices)
-    filtered_boxes = boxes[selected_indices]
-    filtered_scores = scores[selected_indices]
-    filtered_classes = classes[selected_indices]  # 添加类别
-    filtered_masks = masks[selected_indices]
-
-    return filtered_boxes, filtered_scores, filtered_masks, filtered_classes
-
-
 def main():
+    # 初始化配置
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_processor = YOLOProcessor(
         Config.MODEL_PATH, Config.CONF_THRESH, Config.IMG_SIZE, device
@@ -215,77 +181,24 @@ def main():
     prev_time = time.time()
     fps_list = []
 
-    # 定义类别名称（需要根据模型实际定义）
-    class_names = [
-        "class_0",  # 替换为实际类别名
-        "class_1",
-        "class_2",
-        "class_3",
-        "class_4",
-    ]
-
-    # 定义颜色映射（五种颜色）
-    color_map = [
-        (255, 0, 0),  # 红色
-        (0, 255, 0),  # 绿色
-        (0, 0, 255),  # 蓝色
-        (255, 255, 0),  # 黄色
-        (255, 0, 255),  # 品红
-    ]
-
     while True:
         ret, frame = video_processor.read_frame()
         if not ret:
             break
 
-        results = yolo_processor.infer(frame)
-        filtered_boxes, filtered_scores, filtered_masks, filtered_classes = apply_nms(
-            results
-        )
+        # 裁剪ROI区域
+        roi_frame = Utils.crop_roi(frame)
 
-        for i, box in enumerate(filtered_boxes):
-            x1, y1, x2, y2 = map(int, box)
-            class_id = filtered_classes[i]
-            score = filtered_scores[i]
-            label = f"{class_names[class_id]}: {score:.2f}"  # 标签显示内容
+        # YOLO推理
+        results = yolo_processor.infer(roi_frame)
 
-            # 绘制边界框
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-            # 显示类别标签和置信度
-            cv2.putText(
-                frame,
-                label,
-                (x1, y1 - 10),  # 标签位置（框上方）
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 255, 255),  # 白色文字
-                2,
-                cv2.LINE_AA,
-            )
-
-            # 绘制分割掩膜（如果存在）
-            if filtered_masks is not None:
-                mask = filtered_masks[i]
-                mask_resized = cv2.resize(
-                    mask,
-                    (frame.shape[1], frame.shape[0]),
-                    interpolation=cv2.INTER_NEAREST,
-                )
-
-                # 根据类别选择颜色
-                mask_color = color_map[class_id % len(color_map)]
-                color_mask = np.zeros_like(frame, dtype=np.uint8)
-                color_mask[mask_resized == 1] = mask_color
-
-                # 叠加颜色掩膜
-                frame = cv2.addWeighted(frame, 1, color_mask, 0.5, 0)
-
+        # 计算FPS
         current_time = time.time()
         fps = 1 / (current_time - prev_time) if current_time != prev_time else 0
         prev_time = current_time
         fps_list.append(fps)
 
+        # 显示FPS
         cv2.putText(
             frame,
             f"FPS: {fps:.2f}",
@@ -296,10 +209,14 @@ def main():
             2,
         )
 
-        cv2.imshow("YOLOv8 Instance Segmentation with Centerline", frame)
+        # 显示结果
+        annotated_frame = results[0].plot()
+        cv2.imshow("YOLOv8 Instance Segmentation with Centerline", annotated_frame)
+
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
+    # 计算平均帧率
     avg_fps = sum(fps_list) / len(fps_list) if fps_list else 0
     print(f"平均帧率: {avg_fps:.2f}")
 
