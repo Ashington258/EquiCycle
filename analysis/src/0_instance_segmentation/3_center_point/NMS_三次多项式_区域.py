@@ -17,8 +17,6 @@ class Config:
     INPUT_SOURCE = "dataset/video/1280.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     CONF_THRESH = 0.65  # 置信度阈值
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
-    ROI_TOP_LEFT_RATIO = (0, 0.35)
-    ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
 
     # 定义类别名称
     CLASS_NAMES = [
@@ -226,13 +224,6 @@ def main():
     fps_list = []
 
     class_names = Config.CLASS_NAMES
-    color_map = [
-        (255, 0, 0),
-        (0, 255, 0),
-        (0, 0, 255),
-        (255, 255, 0),
-        (255, 0, 255),
-    ]
 
     # 定义区域一
     region_x_min, region_x_max = 0, 640
@@ -248,23 +239,14 @@ def main():
             results
         )
 
-        for i, box in enumerate(filtered_boxes):
-            x1, y1, x2, y2 = map(int, box)
-            class_id = filtered_classes[i]
-            score = filtered_scores[i]
-            label = f"{class_names[class_id]}: {score:.2f}"
+        line_points = {"L 0": [], "R 0": []}  # 存储 L 0 和 R 0 的拟合点
 
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(
-                frame,
-                label,
-                (x1, y1 - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 255, 255),
-                2,
-                cv2.LINE_AA,
-            )
+        for i, box in enumerate(filtered_boxes):
+            class_id = filtered_classes[i]
+            label = class_names[class_id]
+
+            if label not in line_points:
+                continue
 
             if filtered_masks is not None:
                 mask = filtered_masks[i]
@@ -275,11 +257,6 @@ def main():
                 )
                 binary_mask = mask_resized > 0
                 skeleton = skeletonize(binary_mask)
-                skeleton_overlay = img_as_ubyte(skeleton)
-
-                skeleton_color = np.zeros_like(frame, dtype=np.uint8)
-                skeleton_color[skeleton] = (0, 255, 255)
-                frame = cv2.addWeighted(frame, 1, skeleton_color, 0.8, 0)
 
                 # 提取骨架点
                 points = np.column_stack(np.where(skeleton > 0))
@@ -297,27 +274,32 @@ def main():
                     x_fit = np.linspace(x.min(), x.max(), 100)
                     y_fit = polynomial(x_fit)
 
+                    # 保存拟合曲线的点到对应的类别
+                    line_points[label] = list(zip(x_fit, y_fit))
+
                     # 绘制拟合曲线
                     for j in range(len(x_fit) - 1):
                         pt1 = (int(x_fit[j]), int(y_fit[j]))
                         pt2 = (int(x_fit[j + 1]), int(y_fit[j + 1]))
                         cv2.line(frame, pt1, pt2, (0, 0, 255), 2)  # 红色曲线
 
-                    # 计算与区域交点的代数平均数
-                    x_region = []
-                    for x_val, y_val in zip(x_fit, y_fit):
-                        if (
-                            region_x_min <= x_val <= region_x_max
-                            and region_y_min <= y_val <= region_y_max
-                        ):
-                            x_region.append(x_val)
+        # 计算区域内两条拟合线的交点代数平均数
+        region_x_points = []
 
-                    if x_region:  # 如果存在交点
-                        avg_x = sum(x_region) / len(x_region)
-                        avg_point = (int(avg_x), (region_y_min + region_y_max) // 2)
+        for label, points in line_points.items():
+            for x_val, y_val in points:
+                if (
+                    region_x_min <= x_val <= region_x_max
+                    and region_y_min <= y_val <= region_y_max
+                ):
+                    region_x_points.append(x_val)
 
-                        # 绘制交点的代数平均数点
-                        cv2.circle(frame, avg_point, 5, (255, 0, 0), -1)  # 蓝色点
+        if len(region_x_points) > 0:  # 如果存在交点
+            avg_x = sum(region_x_points) / len(region_x_points)
+            avg_point = (int(avg_x), (region_y_min + region_y_max) // 2)
+
+            # 绘制交点的代数平均数点
+            cv2.circle(frame, avg_point, 5, (255, 0, 0), -1)  # 蓝色点
 
         # 绘制区域一的范围框
         cv2.rectangle(
@@ -328,11 +310,13 @@ def main():
             2,
         )  # 黄色框
 
+        # 计算 FPS
         current_time = time.time()
         fps = 1 / (current_time - prev_time) if current_time != prev_time else 0
         prev_time = current_time
         fps_list.append(fps)
 
+        # 显示 FPS
         cv2.putText(
             frame,
             f"FPS: {fps:.2f}",
@@ -349,14 +333,6 @@ def main():
 
     avg_fps = sum(fps_list) / len(fps_list) if fps_list else 0
     print(f"平均帧率: {avg_fps:.2f}")
-
-    plt.plot(fps_list)
-    plt.axhline(avg_fps, color="r", linestyle="--", label=f"Average FPS:{avg_fps:.2f}")
-    plt.title("FPS over Time")
-    plt.xlabel("Frame Index")
-    plt.ylabel("FPS")
-    plt.legend()
-    plt.show()
 
     video_processor.release()
 
