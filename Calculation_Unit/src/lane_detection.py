@@ -10,15 +10,12 @@ from skimage.morphology import skeletonize
 from skimage.util import img_as_ubyte
 from directional_control import DirectionalControl
 
-# Initialize the DirectionalControl module
-directional_control = DirectionalControl()
-
 
 class Config:
     """配置参数类"""
 
     MODEL_PATH = "Calculation_Unit/model/lane.pt"
-    INPUT_SOURCE = "http://192.168.2.113:5000"  # 支持图片路径、视频路径、摄像头ID或URL
+    INPUT_SOURCE = "dataset/video/1280.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     CONF_THRESH = 0.65  # 置信度阈值
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
 
@@ -220,9 +217,6 @@ def apply_nms(results, iou_threshold=0.5):
     filtered_masks = masks[selected_indices]
 
     return filtered_boxes, filtered_scores, filtered_masks, filtered_classes
-
-
-from directional_control import DirectionalControl  # 导入模块
 
 
 def main():
