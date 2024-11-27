@@ -21,3 +21,8 @@ class Config:
         "R 0",
         "R 1",
     ]
+    ELEMENTS_CLASS_NAME = [
+        "cone",
+        "zebra",
+        "turn_sign",
+    ]
