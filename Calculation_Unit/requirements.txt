@@ -1,1 +1,5 @@
-Flask
+scikit-image
+scikit-learn
+opencv-python
+opencv-contrib-python
+aiohttp
