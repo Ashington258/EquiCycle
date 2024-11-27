@@ -2,7 +2,7 @@ import time
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
-from Calculation_Unit.src.yolo_processor import YOLOProcessor
+from yolo_processor import YOLOProcessor
 from video_processor import VideoProcessor
 from directional_control import DirectionalControl
 from apply_nms import apply_nms
@@ -147,7 +147,7 @@ def main():
     # 初始化模块
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_processor = YOLOProcessor(
-        Config.MODEL_PATH, Config.CONF_THRESH, Config.IMG_SIZE, device
+        Config.LANE_MODEL, Config.CONF_THRESH, Config.IMG_SIZE, device
     )
     video_processor = VideoProcessor(Config.INPUT_SOURCE)
     directional_control = DirectionalControl()
