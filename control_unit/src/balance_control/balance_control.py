@@ -68,14 +68,20 @@ class PIDController:
 #      self.angle_pid = PIDController(kp=4.8, ki=0.00001, kd=2.7,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
  #       self.velocity_pid = PIDController(kp=-0.093, ki=-0.0003, kd=-0,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
 
+# offset_angle = 1.7 + (parameters['pulse_value'] - 978)
 offset_angle = 1.7
 v_real = 0
 Stand_time = 2250 # 5ms计数器加一，2000为10s
 class CascadedPIDController:
     def __init__(self):
-        self.gyro_pid = PIDController(kp=3.17, ki=0, kd=0,limit = 0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
-        self.angle_pid = PIDController(kp=4.5, ki=0.000017, kd=2.57,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
-        self.velocity_pid = PIDController(kp=-0.095, ki=-0.00117, kd=-0,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        self.gyro_pid = PIDController(kp=3.2, ki=0, kd=0.07,limit = 0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        self.angle_pid = PIDController(kp=4.43, ki=0.00001, kd=2.63,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        self.velocity_pid = PIDController(kp=-0.095, ki=-0.00117, kd=-0.003,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        # self.velocity_pid = PIDController(kp=-0, ki=-0, kd=-0,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+       
+        # self.gyro_pid = PIDController(kp=3.0, ki=0, kd=0,limit = 0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        # self.angle_pid = PIDController(kp=4.5, ki=0.000017, kd=2.8,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        # self.velocity_pid = PIDController(kp=-0.095, ki=-0.00117, kd=-0.015,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
 
         self.gyro_update_counter = 0
         self.angle_control_signal = 0
