@@ -2,7 +2,7 @@ import time
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
-from yolov8_processor import YOLOProcessor
+from Calculation_Unit.src.yolo_processor import YOLOProcessor
 from video_processor import VideoProcessor
 from directional_control import DirectionalControl
 from apply_nms import apply_nms

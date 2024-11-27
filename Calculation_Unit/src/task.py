@@ -8,17 +8,24 @@ import threading
 import matplotlib.pyplot as plt
 from skimage.morphology import skeletonize
 
+from yolo_processor import YOLOProcessor
+from video_processor import VideoProcessor
+
+
 class Config:
     """配置参数类"""
+
     MODEL_PATH = "Calculation_Unit/model/elements.pt"
-    INPUT_SOURCE = "calculate_unit/Host/src/beta/640.mp4"  
-    CONF_THRESH = 0.65  
-    IMG_SIZE = 640  
+    INPUT_SOURCE = "dataset/video/1280.mp4"
+    CONF_THRESH = 0.65
+    IMG_SIZE = 640
     ROI_TOP_LEFT_RATIO = (0, 0.35)
     ROI_BOTTOM_RIGHT_RATIO = (1, 0.95)
 
+
 class Utils:
     """通用工具类"""
+
     @staticmethod
     def resize_frame(frame, target_width):
         height, width = frame.shape[:2]
@@ -28,93 +35,10 @@ class Utils:
             frame, (target_width, target_height), interpolation=cv2.INTER_LINEAR
         )
 
-class YOLOProcessor:
-    """YOLO模型处理类"""
-    def __init__(self, model_path, conf_thresh, img_size, device):
-        self.device = device
-        self.model = YOLO(model_path).to(self.device)
-        self.model.conf = conf_thresh
-        self.model.imgsz = img_size
-
-    def infer(self, frame):
-        """对单帧进行推理"""
-        return self.model(frame, device=self.device, verbose=False)
-
-class VideoProcessor:
-    """视频处理类，支持图片、视频、摄像头和网络流"""
-    def __init__(self, input_source):
-        self._initialize_input(input_source)
-        if self.cap:
-            self.fps_original = self.cap.get(cv2.CAP_PROP_FPS)
-            print(f"原始视频帧率: {self.fps_original}")
-
-        self._initialize_display_window()
-
-    def _initialize_input(self, input_source):
-        """初始化输入源"""
-        if isinstance(input_source, str):
-            if input_source.startswith(("http://", "https://")):
-                self.stream = VideoStream(input_source)
-                self.cap = None
-                self.image = None
-            elif input_source.lower().endswith((".jpg", ".jpeg", ".png")):
-                self.cap = None
-                self.image = cv2.imread(input_source)
-                self.stream = None
-            else:
-                self.cap = cv2.VideoCapture(input_source)
-                if not self.cap.isOpened():
-                    raise ValueError(f"无法打开视频文件: {input_source}")
-                self.stream = None
-                self.image = None
-        elif isinstance(input_source, int):
-            self.cap = cv2.VideoCapture(input_source)
-            if not self.cap.isOpened():
-                raise ValueError(f"无法打开摄像头: {input_source}")
-            self.stream = None
-            self.image = None
-        else:
-            raise ValueError("未知的输入源类型")
-
-    def _initialize_display_window(self):
-        """初始化显示窗口"""
-        cv2.namedWindow(
-            "YOLOv8 Instance Segmentation with Centerline", cv2.WINDOW_NORMAL
-        )
-        cv2.resizeWindow(
-            "YOLOv8 Instance Segmentation with Centerline",
-            Config.IMG_SIZE,
-            int(Config.IMG_SIZE * 0.75),
-        )
-
-    def read_frame(self):
-        """读取下一帧并调整尺寸"""
-        if self.image is not None:
-            frame = self.image
-        elif self.cap:
-            ret, frame = self.cap.read()
-            if not ret:
-                return False, None
-        elif self.stream:
-            frame = self.stream.get_frame()
-            if frame is None:
-                return False, None
-        else:
-            return False, None
-
-        frame = Utils.resize_frame(frame, Config.IMG_SIZE)
-        return True, frame
-
-    def release(self):
-        """释放资源"""
-        if self.cap:
-            self.cap.release()
-        if self.stream:
-            self.stream.stop()
-        cv2.destroyAllWindows()
 
 class VideoStream:
     """网络视频流处理类"""
+
     def __init__(self, url):
         self.url = url
         self.bytes_data = b""
@@ -147,13 +71,15 @@ class VideoStream:
     def stop(self):
         self.running = False
 
+
 class StateMachine:
     """状态机类，执行任务代码"""
+
     def __init__(self):
         self.state = "IDLE"  # 初始状态
         self.executed_tasks = {
-            "zebra": False,    # 斑马线任务是否执行过
-            "turn_sign": False # 转向标志任务是否执行过
+            "zebra": False,  # 斑马线任务是否执行过
+            "turn_sign": False,  # 转向标志任务是否执行过
         }
         self.cone_count = 0  # 记录锥桶的检测次数
         self.cone_task_executed = False  # 锥桶任务是否执行
@@ -199,14 +125,19 @@ class StateMachine:
             print("Cone detection started. Waiting for 3 seconds...")
         else:
             # 检查置信度是否持续超过3秒
-            if current_time - self.cone_start_time >= 3 and not self.cone_detection_active:
+            if (
+                current_time - self.cone_start_time >= 3
+                and not self.cone_detection_active
+            ):
                 # 确认锥桶检测成功，并标记为“活动检测状态”
                 self.cone_detection_active = True
                 self.cone_count += 1  # 每次有效检测到锥桶时计数加1
 
                 if self.cone_count < 3:
                     # 第一次和第二次检测到锥桶时，仅显示锥桶序号
-                    print(f"Detected cone number {self.cone_count}. Waiting for the third cone...")
+                    print(
+                        f"Detected cone number {self.cone_count}. Waiting for the third cone..."
+                    )
                 else:
                     # 第三次检测到锥桶时，执行任务1
                     print("Detected third cone. Executing Task 1...")
@@ -249,12 +180,14 @@ class StateMachine:
         """返回当前状态"""
         return self.state
 
+
 def main():
     # 初始化配置
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_processor = YOLOProcessor(
         Config.MODEL_PATH, Config.CONF_THRESH, Config.IMG_SIZE, device
     )
+
     video_processor = VideoProcessor(Config.INPUT_SOURCE)  # 确保传递输入源
 
     state_machine = StateMachine()  # 初始化状态机
@@ -283,13 +216,20 @@ def main():
                 elif class_id == 2 and conf > 0.85:  # 转向标志置信度大于 0.85
                     detections.append("turn_sign")
 
-
         # 更新状态机
         state_machine.transition(detections)
 
         # 输出当前状态
         current_state = state_machine.get_state()
-        cv2.putText(frame, f"State: {current_state}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(
+            frame,
+            f"State: {current_state}",
+            (10, 70),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 0),
+            2,
+        )
 
         # 计算FPS
         current_time = time.time()
