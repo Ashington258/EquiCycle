@@ -14,7 +14,7 @@ class Config:
     SERVO_MIDPOINT = 960  # 舵机中值脉冲宽度
 
     # 定义类别名称
-    CLASS_NAMES = [
+    LANE_CLASS_NAME = [
         "__background__",  # 替换为实际类别名
         "L 0",
         "L 1",

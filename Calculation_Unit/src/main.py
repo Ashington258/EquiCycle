@@ -228,7 +228,7 @@ def main():
 
     # 第二个 YOLO 模型（目标检测）
     yolo_processor_elements = YOLOProcessor(
-        "Calculation_Unit/model/elements.pt",
+        Config.ELEMENTS_MODEL,
         Config.CONF_THRESH,
         Config.IMG_SIZE,
         device,
@@ -238,7 +238,7 @@ def main():
     directional_control = DirectionalControl()
 
     # 配置参数
-    class_names = Config.CLASS_NAMES
+    class_names = Config.LANE_CLASS_NAME
     horizontal_line_y = Config.HORIZONTAL_LINE_Y
     target_x = Config.TARGET_X
     R = Config.R
