@@ -5,11 +5,15 @@ import cv2
 import matplotlib.pyplot as plt
 from yolo_processor import YOLOProcessor
 from video_processor import VideoProcessor
-from directional_control import DirectionalControl
+from control_stream.servo_stream import DirectionalControl
+from control_stream.odrive_stream import ControlFlowSender
 from apply_nms import apply_nms
 from config import Config
 from skimage.morphology import skeletonize
 import torch
+
+odrive_control = ControlFlowSender("192.168.2.113", 5000)
+directional_control = DirectionalControl("192.168.2.113", 5001, 800, 2000)
 
 
 class State(Enum):
@@ -214,18 +218,49 @@ def process_idle(frame, *args, **kwargs):
 
 def process_stop_and_turn(frame, *args, **kwargs):
     """处理停车和转向逻辑"""
+    # 注意由于并未使用多线程，进入该状态的车将会关闭循迹
     print("执行停车和转向任务")
-    # 假设我们检测到停车线，模拟停车和转向
-    time.sleep(2)  # 模拟停车
+    # 通过UDP协议发送停车信号 v 1 0
+    odrive_control.motor_velocity(1, 0)
+    time.sleep(9.9)  # 模拟停车
     print("完成停车，执行转向")
+    # 首先回中值状态
+    directional_control.send_protocol_frame_udp(Config.SERVO_MIDPOINT)
+    # 然后向左打一个小角度
+    directional_control.send_protocol_frame_udp(Config.SERVO_MIDPOINT - 50)
+    # 车辆前进
+    odrive_control.motor_velocity(1, 1)
+    # 车辆前进2s，到达预计的位置
+    time.sleep(2)
+
     return frame
 
 
 def process_avoid_obstacle(frame, *args, **kwargs):
     """处理避障逻辑"""
     print("执行避障任务")
-    # 模拟避障任务逻辑
-    time.sleep(1)
+
+    # 速度降低准备避障
+    odrive_control.motor_velocity(1, 0.5)
+    odrive_control.motor_velocity(1, 0.5)
+    # 持续向左打方向之后再持续向右打方向
+    # 向左打方向 200 个脉冲
+    for i in range(200):
+        # 发送脉冲，向左打方向
+        directional_control.send_protocol_frame_udp(
+            Config.CONF_THRESH - (i % 2) * 2
+        )  # 每次发送2个脉冲
+        time.sleep(0.02)  # 等待 20 毫秒
+
+    # 向右打方向 200 个脉冲
+    for i in range(200):
+        # 发送脉冲，向右打方向
+        directional_control.send_protocol_frame_udp(
+            Config.CONF_THRESH + (i % 2) * 2
+        )  # 每次发送2个脉冲
+        time.sleep(0.02)  # 等待 20 毫秒
+    # 恢复行驶速度
+    odrive_control.motor_velocity(1, Config.CAR_SPEED)
     print("避障完成")
     return frame
 
@@ -248,7 +283,6 @@ def main():
     )
 
     video_processor = VideoProcessor(Config.INPUT_SOURCE)
-    directional_control = DirectionalControl()
 
     # 配置参数
     lane_class_name = Config.LANE_CLASS_NAME
