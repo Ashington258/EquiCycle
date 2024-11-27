@@ -21,7 +21,6 @@ class State(Enum):
 def process_frame(
     frame,
     results,
-    # UPDATE 更新标签名称
     lane_class_name,
     horizontal_line_y,
     target_x,
@@ -30,14 +29,13 @@ def process_frame(
     directional_control,
 ):
     """处理每帧，计算交点和舵机控制，并返回处理后的帧"""
-    if frame is None:  # 检查帧是否为空
+    if frame is None:
         return frame
 
-    """处理每帧，计算交点和舵机控制，并返回处理后的帧"""
     filtered_boxes, filtered_scores, filtered_masks, filtered_classes = apply_nms(
         results
     )
-    intersection_points = []  # 存储交点
+    intersection_points = []
 
     # 绘制辅助横线
     cv2.line(
@@ -80,7 +78,7 @@ def process_frame(
             # 提取骨架点
             points = np.column_stack(np.where(skeleton > 0))
 
-            if len(points) > 10:  # 确保点数足够进行拟合
+            if len(points) > 10:
                 x = points[:, 1]
                 y = points[:, 0]
 
@@ -93,7 +91,7 @@ def process_frame(
                 y_fit = polynomial(x_fit)
 
                 for xf, yf in zip(x_fit, y_fit):
-                    if abs(yf - horizontal_line_y) < 1:  # 找到接近横线的点
+                    if abs(yf - horizontal_line_y) < 1:
                         intersection_points.append((xf, yf))
                         cv2.circle(frame, (int(xf), int(yf)), 5, (0, 255, 0), -1)
                         break
@@ -178,6 +176,9 @@ def process_idle(frame, *args, **kwargs):
         directional_control,
     )
 
+    # 初始化检测标志
+    detected_target_element = False
+
     # 处理目标检测结果
     filtered_boxes, filtered_scores, filtered_masks, filtered_classes = apply_nms(
         results_elements
@@ -186,6 +187,13 @@ def process_idle(frame, *args, **kwargs):
         x1, y1, x2, y2 = map(int, box)
         elements_class_id = filtered_classes[i]
         label = f"{elements_class_name[elements_class_id]}: {filtered_scores[i]:.2f}"
+
+        # 获取检测到的元素名称
+        class_name = elements_class_name[elements_class_id]
+
+        # 检查是否检测到指定的元素
+        if class_name in ["zebra", "turn_sign"]:
+            detected_target_element = True
 
         # 绘制目标框
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
@@ -199,7 +207,9 @@ def process_idle(frame, *args, **kwargs):
             2,
             cv2.LINE_AA,
         )
-    return frame
+
+    # 返回帧和检测标志
+    return frame, detected_target_element
 
 
 def process_stop_and_turn(frame, *args, **kwargs):
@@ -241,8 +251,6 @@ def main():
     directional_control = DirectionalControl()
 
     # 配置参数
-    # update 修改标签为labe
-
     lane_class_name = Config.LANE_CLASS_NAME
     elements_class_name = Config.ELEMENTS_CLASS_NAME
     horizontal_line_y = Config.HORIZONTAL_LINE_Y
@@ -256,14 +264,19 @@ def main():
     # 状态初始化
     current_state = State.IDLE
 
+    # 初始化检测计时器
+    detection_start_time = None
+
     while True:
         ret, frame = video_processor.read_frame()
         if not ret:
             break
 
+        current_time = time.time()
+
         if current_state == State.IDLE:
             # 执行车道检测和元素检测
-            frame = process_idle(
+            frame, detected_target_element = process_idle(
                 frame,
                 yolo_processor_lane=yolo_processor_lane,
                 yolo_processor_elements=yolo_processor_elements,
@@ -275,10 +288,21 @@ def main():
                 servo_midpoint=servo_midpoint,
                 directional_control=directional_control,
             )
-            # 假设触发条件为检测到停车线
-            if detect_stop_line(frame):
-                current_state = State.STOP_AND_TURN
-            elif detect_obstacle(frame):
+
+            # 更新检测计时器逻辑
+            if detected_target_element:
+                if detection_start_time is None:
+                    detection_start_time = current_time
+                else:
+                    elapsed_time = current_time - detection_start_time
+                    if elapsed_time >= 3:
+                        current_state = State.STOP_AND_TURN
+                        detection_start_time = None  # 重置计时器
+            else:
+                detection_start_time = None
+
+            # 检测障碍物
+            if detect_obstacle(frame):
                 current_state = State.AVOID_OBSTACLE
 
         elif current_state == State.STOP_AND_TURN:
@@ -294,7 +318,6 @@ def main():
             current_state = State.IDLE
 
         # 计算帧率
-        current_time = time.time()
         fps = 1 / (current_time - prev_time) if current_time != prev_time else 0
         prev_time = current_time
         fps_list.append(fps)
@@ -307,6 +330,17 @@ def main():
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
             (0, 255, 0),
+            2,
+        )
+
+        # 显示当前状态
+        cv2.putText(
+            frame,
+            f"State: {current_state.name}",
+            (10, 70),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (255, 0, 0),
             2,
         )
 
@@ -330,12 +364,6 @@ def main():
 
     # 释放资源
     video_processor.release()
-
-
-def detect_stop_line(frame):
-    """检测停车线的占位函数"""
-    # 替换为真实停车线检测逻辑
-    return False
 
 
 def detect_obstacle(frame):
