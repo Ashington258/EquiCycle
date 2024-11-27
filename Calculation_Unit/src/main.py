@@ -146,9 +146,20 @@ def process_frame(
 def main():
     # 初始化模块
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    yolo_processor = YOLOProcessor(
+
+    # 第一个 YOLO 模型（原来的 lane detection 模型）
+    yolo_processor_lane = YOLOProcessor(
         Config.LANE_MODEL, Config.CONF_THRESH, Config.IMG_SIZE, device
     )
+
+    # 第二个 YOLO 模型（Calculation_Unit/model/elements.pt）
+    yolo_processor_elements = YOLOProcessor(
+        "Calculation_Unit/model/elements.pt",
+        Config.CONF_THRESH,
+        Config.IMG_SIZE,
+        device,
+    )
+
     video_processor = VideoProcessor(Config.INPUT_SOURCE)
     directional_control = DirectionalControl()
 
@@ -177,13 +188,16 @@ def main():
         if not ret:
             break
 
-        # YOLO 推理
-        results = yolo_processor.infer(frame)
+        # YOLO 推理 1：车道检测
+        results_lane = yolo_processor_lane.infer(frame)
+
+        # YOLO 推理 2：目标检测
+        results_elements = yolo_processor_elements.infer(frame)
 
         # 处理每一帧
         frame = process_frame(
             frame,
-            results,
+            results_lane,  # 使用第一个YOLO模型的结果
             class_names,
             horizontal_line_y,
             target_x,
@@ -191,6 +205,28 @@ def main():
             servo_midpoint,
             directional_control,
         )
+        # 处理第二个 YOLO 模型的结果
+        # 这里可以将两个结果合并，或单独处理
+        # 比如，我们可以简单的在帧上绘制元素检测的框
+        filtered_boxes, filtered_scores, filtered_masks, filtered_classes = apply_nms(
+            results_elements
+        )
+        for i, box in enumerate(filtered_boxes):
+            x1, y1, x2, y2 = map(int, box)
+            label = f"Element: {filtered_scores[i]:.2f}"
+
+            # 绘制目标框
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            cv2.putText(
+                frame,
+                label,
+                (x1, y1 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
 
         # 计算帧率
         current_time = time.time()
