@@ -330,6 +330,7 @@ def main():
                 else:
                     elapsed_time = current_time - detection_start_time
                     if elapsed_time >= 3:
+                        # TODO 需要追加距离阈值判断，到达zebra斑马线特定距离的时候才置标志位，可以根据第一次识别到和当前车速的行驶时间来计算距离
                         current_state = State.STOP_AND_TURN
                         detection_start_time = None  # 重置计时器
             else:
