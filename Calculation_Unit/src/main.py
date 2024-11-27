@@ -21,7 +21,8 @@ class State(Enum):
 def process_frame(
     frame,
     results,
-    class_names,
+    # UPDATE 更新标签名称
+    lane_class_name,
     horizontal_line_y,
     target_x,
     R,
@@ -51,7 +52,7 @@ def process_frame(
         x1, y1, x2, y2 = map(int, box)
         class_id = filtered_classes[i]
         score = filtered_scores[i]
-        label = f"{class_names[class_id]}: {score:.2f}"
+        label = f"{lane_class_name[class_id]}: {score:.2f}"
 
         # 绘制边界框和标签
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -154,7 +155,8 @@ def process_idle(frame, *args, **kwargs):
     """处理车道检测和元素检测逻辑"""
     yolo_processor_lane = kwargs.get("yolo_processor_lane")
     yolo_processor_elements = kwargs.get("yolo_processor_elements")
-    class_names = kwargs.get("class_names")
+    lane_class_name = kwargs.get("lane_class_name")
+    elements_class_name = kwargs.get("elements_class_name")
     horizontal_line_y = kwargs.get("horizontal_line_y")
     target_x = kwargs.get("target_x")
     R = kwargs.get("R")
@@ -168,7 +170,7 @@ def process_idle(frame, *args, **kwargs):
     frame = process_frame(
         frame,
         results_lane,
-        class_names,
+        lane_class_name,
         horizontal_line_y,
         target_x,
         R,
@@ -182,7 +184,8 @@ def process_idle(frame, *args, **kwargs):
     )
     for i, box in enumerate(filtered_boxes):
         x1, y1, x2, y2 = map(int, box)
-        label = f"Element: {filtered_scores[i]:.2f}"
+        elements_class_id = filtered_classes[i]
+        label = f"{elements_class_name[elements_class_id]}: {filtered_scores[i]:.2f}"
 
         # 绘制目标框
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
@@ -238,7 +241,10 @@ def main():
     directional_control = DirectionalControl()
 
     # 配置参数
-    class_names = Config.LANE_CLASS_NAME
+    # update 修改标签为labe
+
+    lane_class_name = Config.LANE_CLASS_NAME
+    elements_class_name = Config.ELEMENTS_CLASS_NAME
     horizontal_line_y = Config.HORIZONTAL_LINE_Y
     target_x = Config.TARGET_X
     R = Config.R
@@ -261,7 +267,8 @@ def main():
                 frame,
                 yolo_processor_lane=yolo_processor_lane,
                 yolo_processor_elements=yolo_processor_elements,
-                class_names=class_names,
+                lane_class_name=lane_class_name,
+                elements_class_name=elements_class_name,
                 horizontal_line_y=horizontal_line_y,
                 target_x=target_x,
                 R=R,
