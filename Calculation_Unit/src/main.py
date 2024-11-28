@@ -264,7 +264,7 @@ def process_idle(frame, *args, **kwargs):
 def process_stop_and_turn(frame, *args, **kwargs):
     """处理停车和转向逻辑"""
     # 注意由于并未使用多线程，进入该状态的车将会关闭循迹
-    print("执行停车和转向任务")
+    print("♻执行停车和转向任务")
     # 通过UDP协议发送停车信号 v 1 0
     odrive_control.motor_velocity(1, 0)
     time.sleep(9.9)  # 模拟停车
@@ -283,28 +283,28 @@ def process_stop_and_turn(frame, *args, **kwargs):
 
 def process_avoid_obstacle(frame, *args, **kwargs):
     """处理避障逻辑"""
-    print("执行避障任务")
+    print("♻执行避障任务")
 
     # 速度降低准备避障
     odrive_control.motor_velocity(1, 0.5)
     odrive_control.motor_velocity(1, 0.5)
     # 持续向左打方向之后再持续向右打方向
     # 向左打方向 200 个脉冲
-    for i in range(200):
+    for i in range(100):
         # 发送脉冲，向左打方向
         directional_control.send_protocol_frame_udp(
-            Config.CONF_THRESH - (i % 2) * 2
+            Config.CONF_THRESH - i * 2
         )  # 每次发送2个脉冲
         time.sleep(0.02)  # 等待 20 毫秒
 
     # 向右打方向 200 个脉冲
-    for i in range(200):
+    for i in range(100):
         # 发送脉冲，向右打方向
         directional_control.send_protocol_frame_udp(
-            Config.CONF_THRESH + (i % 2) * 2
+            Config.CONF_THRESH + i * 2
         )  # 每次发送2个脉冲
         time.sleep(0.02)  # 等待 20 毫秒
-    # 恢复行驶速度
+    # 恢复行驶速度 # TODO 需要调试速度
     odrive_control.motor_velocity(1, Config.CAR_SPEED)
     print("避障完成")
     return frame
@@ -386,10 +386,11 @@ def main():
             )
 
             # 如果检测到斑马线或转向标志且置信度 >= 0.9，切换到 STOP_AND_TURN 状态
+            # TODO 需要更新距离判定条件，到达特定的距离阈值才开始停车
             if detected_zebra_or_turn and not stop_and_turn_done:
                 current_state = State.STOP_AND_TURN
                 stop_and_turn_done = True  # 设置为已完成，避免重复执行
-                print("检测到斑马线或转向标志，切换到 STOP_AND_TURN 状态！")
+                print("🆗检测到斑马线或转向标志，切换到 STOP_AND_TURN 状态！")
 
             # 如果锥桶计数达到 AVOID_CONE_INDEX，切换到 AVOID_OBSTACLE 状态
 
@@ -397,18 +398,16 @@ def main():
                 current_state = State.AVOID_OBSTACLE
                 avoid_obstacle_done = True  # 设置为已完成，避免重复执行
                 print(
-                    f"锥桶计数达到 {Config.AVOID_CONE_INDEX}，切换到 AVOID_OBSTACLE 状态！"
+                    f"🆗锥桶计数达到 {Config.AVOID_CONE_INDEX}，切换到 AVOID_OBSTACLE 状态！"
                 )
 
         elif current_state == State.AVOID_OBSTACLE:
             # 执行避障任务
-            print("执行避障任务...")
             process_avoid_obstacle(frame)
             current_state = State.IDLE  # 避障任务完成后，切换回 IDLE 状态
 
         elif current_state == State.STOP_AND_TURN:
             # 执行停车和转向任务
-            print("执行停车和转向任务...")
             process_stop_and_turn(frame)
             current_state = State.IDLE  # 停车和转向任务完成后，切换回 IDLE 状态
 
