@@ -357,17 +357,19 @@ def main():
                 R=R,
                 servo_midpoint=servo_midpoint,
                 directional_control=directional_control,
-                cone_count=cone_count,
-                cone_detection_start_time=cone_detection_start_time,  # 传递计时器
-                last_cone_count_time=last_cone_count_time,  # 传递最后一次计数时间
-                avoid_obstacle_done=avoid_obstacle_done  # 传递是否完成避障任务的标志
             )
 
-            # 如果检测到斑马线或转向标志且置信度 >= 0.9，切换到 STOP_AND_TURN 状态
-            if detected_zebra_or_turn and not stop_and_turn_done:
-                current_state = State.STOP_AND_TURN
-                stop_and_turn_done = True  # 设置为已完成，避免重复执行
-                print("检测到斑马线或转向标志，切换到 STOP_AND_TURN 状态！")
+            # 更新检测计时器逻辑
+            if detected_target_element:
+                if detection_start_time is None:
+                    detection_start_time = current_time
+                else:
+                    elapsed_time = current_time - detection_start_time
+                    if elapsed_time >= 3:
+                        current_state = State.STOP_AND_TURN
+                        detection_start_time = None  # 重置计时器
+            else:
+                detection_start_time = None
 
             # 如果锥桶计数达到 3，切换到 AVOID_OBSTACLE 状态
             if cone_count >= 3 and not avoid_obstacle_done:
