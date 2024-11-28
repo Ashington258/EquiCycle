@@ -179,11 +179,14 @@ def elements_process(
         class_name = elements_class_name[elements_class_id]
 
         # 检查是否检测到斑马线或者转向标志
-        if class_name in ["zebra", "turn_sign"] and filtered_scores[i] >= 0.9:
+        if (
+            class_name in ["zebra", "turn_sign"]
+            and filtered_scores[i] >= Config.TURN_SIGN_CT
+        ):
             detected_zebra_or_turn = True
 
         # 检查是否检测到锥桶
-        if class_name == "cone" and filtered_scores[i] >= 0.9:
+        if class_name == "cone" and filtered_scores[i] >= Config.CONE_CT:
             if avoid_obstacle_done:
                 # 如果避障任务已完成，则不再处理锥桶
                 continue
