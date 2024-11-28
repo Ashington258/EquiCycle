@@ -61,7 +61,7 @@ compile_commands.json
 *.mp4
 
 # # 忽略python中间文件
-# __pycache__
+__pycache__
 
 # 忽略dataset文件夹
 dataset
