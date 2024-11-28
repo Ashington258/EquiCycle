@@ -18,6 +18,7 @@ class Config:
     # 目标位置参数
     HORIZONTAL_LINE_Y = 280  # 横线的Y坐标
     TARGET_X = 320  # 目标的 X 坐标（可以根据实际需求调整）
+    DISTANCE_THRESHOLD = 50  # 例：50像素
 
     # 锥桶类参数
     CONE_TO_AVOID_INDEX = 3  # 需要避障的锥桶索引
