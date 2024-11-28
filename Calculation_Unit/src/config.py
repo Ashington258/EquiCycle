@@ -13,7 +13,8 @@ class Config:
     R = 250  # 调节舵机力度的参数，越大舵机力度越小
     SERVO_MIDPOINT = 960  # 舵机中值脉冲宽度
     CAR_SPEED = 1  # 后轮电机速度，车辆行驶速度
-
+    AVOID_CONE_INDEX = 3  # 需要避障的锥桶索引
+    CONE_DET_COOLING_TIME = 13  # 锥桶检测冷却时间
     # 定义类别名称
     LANE_CLASS_NAME = [
         "__background__",  # 替换为实际类别名
