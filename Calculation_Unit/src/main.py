@@ -22,7 +22,7 @@ class State(Enum):
     AVOID_OBSTACLE = 3  # 避障
 
 
-def process_frame(
+def lane_process(
     frame,
     results,
     lane_class_name,
@@ -104,7 +104,7 @@ def process_frame(
     if len(intersection_points) == 2:
         center_x = int((intersection_points[0][0] + intersection_points[1][0]) / 2)
         center_y = int(horizontal_line_y)
-
+        # todo 对计算得到的中点进行平滑滤波
         # 计算center_x与target_x的差值
         difference = center_x - target_x
 
@@ -153,6 +153,88 @@ def process_frame(
     return frame
 
 
+def elements_process(
+    frame,
+    results_elements,
+    elements_class_name,
+    cone_count,
+    cone_detection_start_time,
+    last_cone_count_time,
+    avoid_obstacle_done,
+):
+    """处理元素检测并返回相关标志和计数信息"""
+    detected_target_element = False
+    detected_zebra_or_turn = False  # 用于标记是否检测到斑马线或转向标志
+
+    filtered_boxes, filtered_scores, filtered_masks, filtered_classes = apply_nms(
+        results_elements
+    )
+
+    for i, box in enumerate(filtered_boxes):
+        x1, y1, x2, y2 = map(int, box)
+        elements_class_id = filtered_classes[i]
+        label = f"{elements_class_name[elements_class_id]}: {filtered_scores[i]:.2f}"
+
+        # 获取检测到的元素名称
+        class_name = elements_class_name[elements_class_id]
+
+        # 检查是否检测到斑马线或者转向标志
+        if (
+            class_name in ["zebra", "turn_sign"]
+            and filtered_scores[i] >= Config.TURN_SIGN_CT
+        ):
+            detected_zebra_or_turn = True
+
+        # 检查是否检测到锥桶
+        if class_name == "cone" and filtered_scores[i] >= Config.CONE_CT:
+            if avoid_obstacle_done:
+                # 如果避障任务已完成，则不再处理锥桶
+                continue
+
+            # 如果最后一次锥桶计数时间为空，或已超过冷却时间，则允许增加计数
+            if (
+                last_cone_count_time is None
+                or time.time() - last_cone_count_time >= Config.CONE_DET_COOLING_TIME
+            ):
+                if cone_detection_start_time is None:
+                    cone_detection_start_time = time.time()  # 锥桶检测开始时间
+                else:
+                    elapsed_time = time.time() - cone_detection_start_time
+                    if (
+                        elapsed_time >= Config.CONE_CONFIRMATION_DURATION
+                    ):  # 锥桶检测确定时间
+                        if cone_count < 3:  # 限制锥桶计数只增加到 3
+                            cone_count += 1
+                            last_cone_count_time = time.time()  # 更新最后一次计数时间
+                            cone_detection_start_time = None  # 重置计时器
+                            print(f"锥桶检测计数增加！当前锥桶计数: {cone_count}")
+        else:
+            # 如果检测到的锥桶置信度低于 0.9，重置计时器
+            cone_detection_start_time = None
+
+        # 绘制目标框
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+        cv2.putText(
+            frame,
+            label,
+            (x1, y1 - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+
+    return (
+        frame,
+        detected_target_element,
+        detected_zebra_or_turn,
+        cone_count,
+        cone_detection_start_time,
+        last_cone_count_time,
+    )
+
+
 def process_idle(frame, *args, **kwargs):
     """处理车道检测和元素检测逻辑"""
     yolo_processor_lane = kwargs.get("yolo_processor_lane")
@@ -176,7 +258,7 @@ def process_idle(frame, *args, **kwargs):
     results_elements = yolo_processor_elements.infer(frame)
 
     # core 处理车道检测结果
-    frame = process_frame(
+    frame = lane_process(
         frame,
         results_lane,
         lane_class_name,
@@ -187,70 +269,25 @@ def process_idle(frame, *args, **kwargs):
         directional_control,
     )
 
-    # 初始化检测标志
-    detected_target_element = False
-    detected_zebra_or_turn = False  # 用于标记是否检测到斑马线或转向标志
-
-    # core 处理目标检测结果
-    filtered_boxes, filtered_scores, filtered_masks, filtered_classes = apply_nms(
-        results_elements
+    # core 处理元素检测结果
+    (
+        frame,
+        detected_target_element,
+        detected_zebra_or_turn,
+        cone_count,
+        cone_detection_start_time,
+        last_cone_count_time,
+    ) = elements_process(
+        frame,
+        results_elements,
+        elements_class_name,
+        cone_count,
+        cone_detection_start_time,
+        last_cone_count_time,
+        avoid_obstacle_done,
     )
 
-    for i, box in enumerate(filtered_boxes):
-        x1, y1, x2, y2 = map(int, box)
-        elements_class_id = filtered_classes[i]
-        label = f"{elements_class_name[elements_class_id]}: {filtered_scores[i]:.2f}"
-
-        # 获取检测到的元素名称
-        class_name = elements_class_name[elements_class_id]
-
-        # 检查是否检测到斑马线或者转向标志
-        if class_name in ["zebra", "turn_sign"] and filtered_scores[i] >= 0.9:
-            detected_zebra_or_turn = True
-
-        # 检查是否检测到锥桶
-        if class_name == "cone" and filtered_scores[i] >= 0.9:
-            if avoid_obstacle_done:
-                # 如果避障任务已完成，则不再处理锥桶
-                continue
-
-            # 如果最后一次锥桶计数时间为空，或已超过 5 秒，则允许增加计数
-
-            if (
-                last_cone_count_time is None
-                # 锥桶检测冷却时间CONE_DET_COOLING_TIME，防止重复检测
-                or time.time() - last_cone_count_time >= Config.CONE_DET_COOLING_TIME
-            ):
-                if cone_detection_start_time is None:
-                    cone_detection_start_time = time.time()  # 锥桶检测开始时间
-                else:
-                    elapsed_time = time.time() - cone_detection_start_time
-                    # TODO 锥桶检测确定时间
-                    if elapsed_time >= 3:
-                        # 如果锥桶持续检测超过 3 秒，增加锥桶计数
-                        if cone_count < 3:  # 限制锥桶计数只增加到 3
-                            cone_count += 1
-                            last_cone_count_time = time.time()  # 更新最后一次计数时间
-                            cone_detection_start_time = None  # 重置计时器
-                            print(f"锥桶检测计数增加！当前锥桶计数: {cone_count}")
-        else:
-            # 如果检测到的锥桶置信度低于 0.9，重置计时器
-            cone_detection_start_time = None
-
-        # 绘制目标框
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-        cv2.putText(
-            frame,
-            label,
-            (x1, y1 - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (255, 255, 255),
-            2,
-            cv2.LINE_AA,
-        )
-
-    # 如果检测到斑马线或转向标志，返回检测标志
+    # 返回处理后的结果
     return (
         frame,
         detected_target_element,
@@ -290,11 +327,14 @@ def process_avoid_obstacle(frame, *args, **kwargs):
     odrive_control.motor_velocity(1, 0.5)
     odrive_control.motor_velocity(1, 0.5)
     # 持续向左打方向之后再持续向右打方向
+
+    # 舵机回中值
+    directional_control.send_protocol_frame_udp(Config.SERVO_MIDPOINT)
     # 向左打方向 200 个脉冲
     for i in range(100):
         # 发送脉冲，向左打方向
         directional_control.send_protocol_frame_udp(
-            Config.CONF_THRESH - i * 2
+            Config.SERVO_MIDPOINT - i * 2
         )  # 每次发送2个脉冲
         time.sleep(0.02)  # 等待 20 毫秒
 
@@ -302,7 +342,7 @@ def process_avoid_obstacle(frame, *args, **kwargs):
     for i in range(100):
         # 发送脉冲，向右打方向
         directional_control.send_protocol_frame_udp(
-            Config.CONF_THRESH + i * 2
+            Config.SERVO_MIDPOINT + i * 2
         )  # 每次发送2个脉冲
         time.sleep(0.02)  # 等待 20 毫秒
     # 恢复行驶速度 # TODO 需要调试速度
@@ -403,13 +443,13 @@ def main():
                 stop_and_turn_done = True  # 设置为已完成，避免重复执行
                 print("🆗检测到斑马线或转向标志，切换到 STOP_AND_TURN 状态！")
 
-            # 如果锥桶计数达到 AVOID_CONE_INDEX，切换到 AVOID_OBSTACLE 状态
+            # 如果锥桶计数达到 CONE_TO_AVOID_INDEX，切换到 AVOID_OBSTACLE 状态
 
-            if cone_count >= Config.AVOID_CONE_INDEX and not avoid_obstacle_done:
+            if cone_count >= Config.CONE_TO_AVOID_INDEX and not avoid_obstacle_done:
                 current_state = State.AVOID_OBSTACLE
                 avoid_obstacle_done = True  # 设置为已完成，避免重复执行
                 print(
-                    f"🆗锥桶计数达到 {Config.AVOID_CONE_INDEX}，切换到 AVOID_OBSTACLE 状态！"
+                    f"🆗锥桶计数达到 {Config.CONE_TO_AVOID_INDEX}，切换到 AVOID_OBSTACLE 状态！"
                 )
 
         elif current_state == State.AVOID_OBSTACLE:
@@ -480,12 +520,6 @@ def main():
 
     # 释放资源
     video_processor.release()
-
-
-def detect_obstacle(frame):
-    """检测障碍物的占位函数"""
-    # 替换为真实障碍物检测逻辑
-    return False
 
 
 if __name__ == "__main__":
