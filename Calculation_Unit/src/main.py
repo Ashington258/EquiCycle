@@ -171,10 +171,11 @@ def process_idle(frame, *args, **kwargs):
     last_cone_count_time = kwargs.get("last_cone_count_time", None)  # 上次锥桶计数时间
     avoid_obstacle_done = kwargs.get("avoid_obstacle_done", False)  # 避障任务是否完成
 
+    # CORE 运行 yolo 进行推理
     results_lane = yolo_processor_lane.infer(frame)
     results_elements = yolo_processor_elements.infer(frame)
 
-    # 处理车道检测结果
+    # core 处理车道检测结果
     frame = process_frame(
         frame,
         results_lane,
@@ -190,7 +191,7 @@ def process_idle(frame, *args, **kwargs):
     detected_target_element = False
     detected_zebra_or_turn = False  # 用于标记是否检测到斑马线或转向标志
 
-    # 处理目标检测结果
+    # core 处理目标检测结果
     filtered_boxes, filtered_scores, filtered_masks, filtered_classes = apply_nms(
         results_elements
     )
