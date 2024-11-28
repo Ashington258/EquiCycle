@@ -71,7 +71,7 @@ class DirectionalControl:
 
         # 构建完整协议帧
         protocol_frame = [frame_header, low_byte, high_byte, crc, frame_footer]
-        print(f"构建的协议帧: {protocol_frame} 脉冲宽度：{pulse_width}")
+        # print(f"构建的协议帧: {protocol_frame} 脉冲宽度：{pulse_width}")
         return protocol_frame
 
     def send_protocol_frame_udp(self, pulse_width):
@@ -90,6 +90,6 @@ class DirectionalControl:
         # 通过 UDP 发送数据
         try:
             self.sock.sendto(protocol_frame_bytes, (self.udp_ip, self.udp_port))
-            print(f"协议帧已通过 UDP 发送到 {self.udp_ip}:{self.udp_port}")
+            # print(f"协议帧已通过 UDP 发送到 {self.udp_ip}:{self.udp_port}")
         except Exception as e:
             print(f"发送 UDP 数据时出错: {e}")
