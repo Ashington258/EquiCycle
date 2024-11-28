@@ -20,7 +20,8 @@ class Config:
     TARGET_X = 320  # 目标的 X 坐标（可以根据实际需求调整）
 
     # 锥桶类参数
-    AVOID_CONE_INDEX = 3  # 需要避障的锥桶索引
+    CONE_TO_AVOID_INDEX = 3  # 需要避障的锥桶索引
+    CONE_CONFIRMATION_DURATION = 3  # 确认锥桶所需的持续检测时间
     CONE_DET_COOLING_TIME = 13  # 锥桶检测冷却时间
     CONE_CT = 0.85  # 锥桶的置信度
 

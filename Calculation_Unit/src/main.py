@@ -197,7 +197,9 @@ def elements_process(
                     cone_detection_start_time = time.time()  # 锥桶检测开始时间
                 else:
                     elapsed_time = time.time() - cone_detection_start_time
-                    if elapsed_time >= 3:  # 锥桶检测确定时间
+                    if (
+                        elapsed_time >= Config.CONE_CONFIRMATION_DURATION
+                    ):  # 锥桶检测确定时间
                         if cone_count < 3:  # 限制锥桶计数只增加到 3
                             cone_count += 1
                             last_cone_count_time = time.time()  # 更新最后一次计数时间
@@ -438,13 +440,13 @@ def main():
                 stop_and_turn_done = True  # 设置为已完成，避免重复执行
                 print("🆗检测到斑马线或转向标志，切换到 STOP_AND_TURN 状态！")
 
-            # 如果锥桶计数达到 AVOID_CONE_INDEX，切换到 AVOID_OBSTACLE 状态
+            # 如果锥桶计数达到 CONE_TO_AVOID_INDEX，切换到 AVOID_OBSTACLE 状态
 
-            if cone_count >= Config.AVOID_CONE_INDEX and not avoid_obstacle_done:
+            if cone_count >= Config.CONE_TO_AVOID_INDEX and not avoid_obstacle_done:
                 current_state = State.AVOID_OBSTACLE
                 avoid_obstacle_done = True  # 设置为已完成，避免重复执行
                 print(
-                    f"🆗锥桶计数达到 {Config.AVOID_CONE_INDEX}，切换到 AVOID_OBSTACLE 状态！"
+                    f"🆗锥桶计数达到 {Config.CONE_TO_AVOID_INDEX}，切换到 AVOID_OBSTACLE 状态！"
                 )
 
         elif current_state == State.AVOID_OBSTACLE:
