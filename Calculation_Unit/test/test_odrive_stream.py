@@ -52,8 +52,8 @@ if __name__ == "__main__":
 
     # 启动发送器
     target_motor = 1  # 控制目标
-    velocity = 1.34  # 速度值，可以是小数
-    ip_address = "192.168.2.36"  # 目标 IP 地址
+    velocity = 0  # 速度值，可以是小数
+    ip_address = "192.168.2.113"  # 目标 IP 地址
     port_number = 12345  # 目标端口号
 
     sender = ControlFlowSender(ip_address, port_number)
