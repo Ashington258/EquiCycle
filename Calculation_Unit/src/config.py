@@ -10,7 +10,7 @@ class Config:
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
 
     # 控制参数
-    CONF_THRESH = 0.65  # 置信度阈值，用于设定YOLO类的基本识别阈值
+    CONF_THRESH = 0.75  # 置信度阈值，用于设定YOLO类的基本识别阈值
     CAR_SPEED = 1  # 后轮电机速度，车辆行驶速度
     R = 250  # 调节舵机力度的参数，越大舵机力度越小
     SERVO_MIDPOINT = 960  # 舵机中值脉冲宽度
