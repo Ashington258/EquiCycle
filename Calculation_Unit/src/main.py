@@ -214,11 +214,17 @@ def process_idle(frame, *args, **kwargs):
                 continue
 
             # 如果最后一次锥桶计数时间为空，或已超过 5 秒，则允许增加计数
-            if last_cone_count_time is None or time.time() - last_cone_count_time >= 13:
+
+            if (
+                last_cone_count_time is None
+                # 锥桶检测冷却时间CONE_DET_COOLING_TIME，防止重复检测
+                or time.time() - last_cone_count_time >= Config.CONE_DET_COOLING_TIME
+            ):
                 if cone_detection_start_time is None:
                     cone_detection_start_time = time.time()  # 锥桶检测开始时间
                 else:
                     elapsed_time = time.time() - cone_detection_start_time
+                    # TODO 锥桶检测确定时间
                     if elapsed_time >= 3:
                         # 如果锥桶持续检测超过 3 秒，增加锥桶计数
                         if cone_count < 3:  # 限制锥桶计数只增加到 3
@@ -385,11 +391,14 @@ def main():
                 stop_and_turn_done = True  # 设置为已完成，避免重复执行
                 print("检测到斑马线或转向标志，切换到 STOP_AND_TURN 状态！")
 
-            # 如果锥桶计数达到 3，切换到 AVOID_OBSTACLE 状态
-            if cone_count >= 3 and not avoid_obstacle_done:
+            # 如果锥桶计数达到 AVOID_CONE_INDEX，切换到 AVOID_OBSTACLE 状态
+
+            if cone_count >= Config.AVOID_CONE_INDEX and not avoid_obstacle_done:
                 current_state = State.AVOID_OBSTACLE
                 avoid_obstacle_done = True  # 设置为已完成，避免重复执行
-                print(f"锥桶计数达到 3，切换到 AVOID_OBSTACLE 状态！")
+                print(
+                    f"锥桶计数达到 {Config.AVOID_CONE_INDEX}，切换到 AVOID_OBSTACLE 状态！"
+                )
 
         elif current_state == State.AVOID_OBSTACLE:
             # 执行避障任务
