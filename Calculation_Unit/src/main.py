@@ -352,6 +352,16 @@ def main():
     stop_and_turn_done = False  # 添加标志，确保只执行一次停车和转向任务
     avoid_obstacle_done = False  # 避障任务是否完成
 
+    # CORE 等待视频流准备好
+    start_time = time.time()
+    while True:
+        ret, frame = video_processor.read_frame()
+        if ret:
+            break
+        if time.time() - start_time > 10:  # 如果 10 秒后仍未获取到帧，退出
+            print("无法连接到视频流")
+            return
+
     while True:
         ret, frame = video_processor.read_frame()
         if not ret:
