@@ -1,10 +1,10 @@
 class Config:
     """配置参数类"""
 
-    MODEL_PATH = "Calculation_Unit/model/lane.pt"
+    # MODEL_PATH = "Calculation_Unit/model/lane.pt"
     LANE_MODEL = "Calculation_Unit/model/lane.pt"
     ELEMENTS_MODEL = "Calculation_Unit/model/elements.pt"
-    INPUT_SOURCE = "dataset/video/640.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
+    INPUT_SOURCE = "dataset/video/640_2.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     CONF_THRESH = 0.65  # 置信度阈值
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
 
