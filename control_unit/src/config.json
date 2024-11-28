@@ -1,16 +1,16 @@
 {
     "ch100": {
-        "port": "/dev/ttyUSB0",
+        "port": "/dev/ttyUSB3",
         "baudrate": 460800,
         "zmq_port": 5555
     },
     "odrive": {
-        "port": "/dev/ttyUSB2",
+        "port": "/dev/ttyACM1",
         "baudrate": 460800,
         "zmq_port": 5556
     },
     "servo": {
-        "port": "/dev/ttyUSB1",
+        "port": "/dev/ttyUSB4",
         "baudrate": 115200,
         "udp_host": "0.0.0.0",
         "udp_port": 5558

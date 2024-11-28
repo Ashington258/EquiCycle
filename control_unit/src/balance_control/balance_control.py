@@ -11,16 +11,11 @@ previous_error = 0.0
 integral = 0.0
 last_time = time.time()
 
-
-
-received_value = None
-value_lock = threading.Lock()  # 线程锁，避免并发冲突
 flag_Crossing_1 = 0
 flag_Crossing_2 = 0
 flag_Crossing_over = 0
 count_Crossing_2 = 0
 
-v_back = 0              # 后轮速度总变量
 stop_count = 0          # 直立计数变量
 flag_go = 0             # 直立元素完成标志
 
@@ -72,8 +67,8 @@ class PIDController:
 
 # offset_angle = 1.7 + (parameters['pulse_value'] - 978)
 offset_angle = 2.05     # 左右零点
-v_real = 0              # 后轮速度缓冲变量
-Stand_time = 2250       # 直立时间 2250 -> 30s
+v_basic = -1.7              # 直立之后后轮速度
+Stand_time = 800       # 直立时间 2250 -> 30s
 class CascadedPIDController:
     def __init__(self):
         self.gyro_pid = PIDController(kp=3.3, ki=0, kd=0.07,limit = 0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
@@ -152,14 +147,17 @@ def process_odrive_data(data):
         control_params["motor_position"] = motor_position
         control_params["motor_speed"] = motor_speed
 
-def Get_flag_from_visionPart():
-    """
-    访问并使用接收到的浮点数
-    """
-    # while not stop_event.is_set():
-    with value_lock:  # 确保安全访问
-        if received_value is not None:
-            return received_value
+v_vision = None
+def process_speedBack_message(message):
+    # 解析并处理控制消息
+    global v_vision
+    parts = message.split()
+    if len(parts) == 3 and parts[0] == 'v' and parts[1] == '1':
+        v_vision = float(parts[2])
+        
+        # 你可以在这里添加更多的逻辑来处理控制指令
+    else:
+        v_vision = None
 
                 
 CascadePIDclass = CascadedPIDController()
@@ -185,36 +183,39 @@ def adjust_motor_speed(odrive_instance, PIDclass):
     # 直立30s任务，优先级最低
     if flag_go == 0:
         stop_count += 1
-    if stop_count >= Stand_time:
+    if stop_count >= Stand_time and flag_go == 0:
         flag_go = 1
-        v_real = -1
+        odrive_instance.motor_velocity(1, v_basic, 0)
         
-    # 斑马线元素处理，优先级居中
-    flag_Crossing_1 = Get_flag_from_visionPart()
-        # 1,到达斑马线停车
-    if flag_Crossing_1 == 1 and flag_Crossing_over == 0:
-        v_real = 0
-        flag_Crossing_2 = 1
-        # 2,停车计时10s
-    if flag_Crossing_2 == 1 and flag_Crossing_over == 0:
-        flag_Crossing_1 = 0
-        count_Crossing_2 += 1
-        # 3,计时结束，继续前进
-    if count_Crossing_2 >= 800:
-        count_Crossing_2 = 0
-        flag_Crossing_2 = 0
-        flag_Crossing_over = 1   # 该标志位保证只进行一次斑马线元素
-    if flag_Crossing_over == 1:
-        v_real = -1
+    # # 斑马线元素处理，优先级居中
+    # flag_Crossing_1 = Get_flag_from_visionPart()
+    #     # 1,到达斑马线停车
+    # if flag_Crossing_1 == 1 and flag_Crossing_over == 0:
+    #     v_real = 0
+    #     flag_Crossing_2 = 1
+    #     # 2,停车计时10s
+    # if flag_Crossing_2 == 1 and flag_Crossing_over == 0:
+    #     flag_Crossing_1 = 0
+    #     count_Crossing_2 += 1
+    #     # 3,计时结束，继续前进
+    # if count_Crossing_2 >= 800:
+    #     count_Crossing_2 = 0
+    #     flag_Crossing_2 = 0
+    #     flag_Crossing_over = 1   # 该标志位保证只进行一次斑马线元素
+    # if flag_Crossing_over == 1:
+    #     v_real = -1
     # 倒地判断优先级最高，放在最后面
     if (angle - offset_angle) < -7 or (angle - offset_angle) > 7:
         new_motor_speed = 0
-        v_back = 0
+        odrive_instance.motor_velocity(1, 0, 0)
     else:
-        v_back = v_real
+        if v_vision != None:
+            odrive_instance.motor_velocity(1, v_vision, 0)
+    # else:
+    #     v_back = v_real
     # 发送速度
     odrive_instance.motor_velocity(0, new_motor_speed, 0)
-    odrive_instance.motor_velocity(1, v_back, 0)
+    # odrive_instance.motor_velocity(1, v_back, 0)
 
 
 def clamp_speed(speed, min_speed, max_speed):
