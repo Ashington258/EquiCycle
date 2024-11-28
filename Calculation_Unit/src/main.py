@@ -165,7 +165,9 @@ def process_idle(frame, *args, **kwargs):
     servo_midpoint = kwargs.get("servo_midpoint")
     directional_control = kwargs.get("directional_control")
     cone_count = kwargs.get("cone_count", 0)  # 锥桶计数器
-    cone_detection_start_time = kwargs.get("cone_detection_start_time", None)  # 锥桶检测计时器
+    cone_detection_start_time = kwargs.get(
+        "cone_detection_start_time", None
+    )  # 锥桶检测计时器
     last_cone_count_time = kwargs.get("last_cone_count_time", None)  # 上次锥桶计数时间
     avoid_obstacle_done = kwargs.get("avoid_obstacle_done", False)  # 避障任务是否完成
 
@@ -192,7 +194,7 @@ def process_idle(frame, *args, **kwargs):
     filtered_boxes, filtered_scores, filtered_masks, filtered_classes = apply_nms(
         results_elements
     )
-    
+
     for i, box in enumerate(filtered_boxes):
         x1, y1, x2, y2 = map(int, box)
         elements_class_id = filtered_classes[i]
@@ -242,9 +244,15 @@ def process_idle(frame, *args, **kwargs):
         )
 
     # 如果检测到斑马线或转向标志，返回检测标志
-    return frame, detected_target_element, cone_count, cone_detection_start_time, last_cone_count_time, detected_zebra_or_turn, avoid_obstacle_done
-
-
+    return (
+        frame,
+        detected_target_element,
+        cone_count,
+        cone_detection_start_time,
+        last_cone_count_time,
+        detected_zebra_or_turn,
+        avoid_obstacle_done,
+    )
 
 
 def process_stop_and_turn(frame, *args, **kwargs):
@@ -346,7 +354,15 @@ def main():
 
         if current_state == State.IDLE:
             # 执行车道检测和元素检测
-            frame, detected_target_element, cone_count, cone_detection_start_time, last_cone_count_time, detected_zebra_or_turn, avoid_obstacle_done = process_idle(
+            (
+                frame,
+                detected_target_element,
+                cone_count,
+                cone_detection_start_time,
+                last_cone_count_time,
+                detected_zebra_or_turn,
+                avoid_obstacle_done,
+            ) = process_idle(
                 frame,
                 yolo_processor_lane=yolo_processor_lane,
                 yolo_processor_elements=yolo_processor_elements,
@@ -447,7 +463,6 @@ def main():
 
     # 释放资源
     video_processor.release()
-
 
 
 def detect_obstacle(frame):
