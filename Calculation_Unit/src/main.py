@@ -22,7 +22,7 @@ class State(Enum):
     AVOID_OBSTACLE = 3  # 避障
 
 
-def process_frame(
+def lane_process(
     frame,
     results,
     lane_class_name,
@@ -153,6 +153,10 @@ def process_frame(
     return frame
 
 
+def elements_process():
+    return
+
+
 def process_idle(frame, *args, **kwargs):
     """处理车道检测和元素检测逻辑"""
     yolo_processor_lane = kwargs.get("yolo_processor_lane")
@@ -176,7 +180,7 @@ def process_idle(frame, *args, **kwargs):
     results_elements = yolo_processor_elements.infer(frame)
 
     # core 处理车道检测结果
-    frame = process_frame(
+    frame = lane_process(
         frame,
         results_lane,
         lane_class_name,
@@ -188,6 +192,7 @@ def process_idle(frame, *args, **kwargs):
     )
 
     # 初始化检测标志
+    # TODO 该部分封装成 elements_process 函数
     detected_target_element = False
     detected_zebra_or_turn = False  # 用于标记是否检测到斑马线或转向标志
 
