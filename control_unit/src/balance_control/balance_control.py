@@ -6,23 +6,25 @@ import time
 control_params = {}
 control_params_lock = threading.Lock()
 
-# PID control parameters
-TARGET_ROLL = 0.0  # Target roll angle for balance
-Kp = 0.1  # Proportional gain
-Ki = 0.0  # Integral gain
-Kd = 0.0  # Derivative gain
-v_back = 0
-stop_count = 0
-stop_flag = 0
-
-
 # Global variables for PID control
 previous_error = 0.0
 integral = 0.0
 last_time = time.time()
 
-# Define motor speed limits
-MOTOR_SPEED_LIMIT = 35
+
+
+received_value = None
+value_lock = threading.Lock()  # 线程锁，避免并发冲突
+flag_Crossing_1 = 0
+flag_Crossing_2 = 0
+flag_Crossing_over = 0
+count_Crossing_2 = 0
+
+v_back = 0              # 后轮速度总变量
+stop_count = 0          # 直立计数变量
+flag_go = 0             # 直立元素完成标志
+
+MOTOR_SPEED_LIMIT = 25  # 速度限幅
 
 
 class PIDController:
@@ -69,16 +71,20 @@ class PIDController:
  #       self.velocity_pid = PIDController(kp=-0.093, ki=-0.0003, kd=-0,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
 
 # offset_angle = 1.7 + (parameters['pulse_value'] - 978)
-offset_angle = 1.7
-v_real = 0
-Stand_time = 2250 # 5ms计数器加一，2000为10s
+offset_angle = 2.05     # 左右零点
+v_real = 0              # 后轮速度缓冲变量
+Stand_time = 2250       # 直立时间 2250 -> 30s
 class CascadedPIDController:
     def __init__(self):
-        self.gyro_pid = PIDController(kp=3.2, ki=0, kd=0.07,limit = 0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
-        self.angle_pid = PIDController(kp=4.43, ki=0.00001, kd=2.63,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
-        self.velocity_pid = PIDController(kp=-0.095, ki=-0.00117, kd=-0.003,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        self.gyro_pid = PIDController(kp=3.3, ki=0, kd=0.07,limit = 0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        self.angle_pid = PIDController(kp=3.7, ki=0.000007, kd=3,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        self.velocity_pid = PIDController(kp=-0.12, ki=-0.0009, kd=-0.03,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
         # self.velocity_pid = PIDController(kp=-0, ki=-0, kd=-0,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
        
+        #self.gyro_pid = PIDController(kp=3.13, ki=0, kd=0.07,limit = 0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        #self.angle_pid = PIDController(kp=3.7, ki=0.000007, kd=3,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        #self.velocity_pid = PIDController(kp=-0.12, ki=-0.0009, kd=-0.03,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))0.75
+
         # self.gyro_pid = PIDController(kp=3.0, ki=0, kd=0,limit = 0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
         # self.angle_pid = PIDController(kp=4.5, ki=0.000017, kd=2.8,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
         # self.velocity_pid = PIDController(kp=-0.095, ki=-0.00117, kd=-0.015,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
@@ -146,11 +152,23 @@ def process_odrive_data(data):
         control_params["motor_position"] = motor_position
         control_params["motor_speed"] = motor_speed
 
+def Get_flag_from_visionPart():
+    """
+    访问并使用接收到的浮点数
+    """
+    # while not stop_event.is_set():
+    with value_lock:  # 确保安全访问
+        if received_value is not None:
+            return received_value
 
+                
 CascadePIDclass = CascadedPIDController()
 
 def adjust_motor_speed(odrive_instance, PIDclass):
-    global stop_count, stop_flag
+    
+    global stop_count, stop_flag,flag_go,v_real
+    global flag_Crossing_1,flag_Crossing_2,flag_Crossing_over,count_Crossing_2
+    
     with control_params_lock:
         gyro = control_params.get("gyro", {}).get("x", 0.0)
         angle = control_params.get("euler_angles", {}).get("pitch", 0.0)
@@ -162,18 +180,41 @@ def adjust_motor_speed(odrive_instance, PIDclass):
 
     new_motor_speed = clamp_speed(new_motor_speed, -MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT)
 
+
+    
+    # 直立30s任务，优先级最低
+    if flag_go == 0:
+        stop_count += 1
+    if stop_count >= Stand_time:
+        flag_go = 1
+        v_real = -1
+        
+    # 斑马线元素处理，优先级居中
+    flag_Crossing_1 = Get_flag_from_visionPart()
+        # 1,到达斑马线停车
+    if flag_Crossing_1 == 1 and flag_Crossing_over == 0:
+        v_real = 0
+        flag_Crossing_2 = 1
+        # 2,停车计时10s
+    if flag_Crossing_2 == 1 and flag_Crossing_over == 0:
+        flag_Crossing_1 = 0
+        count_Crossing_2 += 1
+        # 3,计时结束，继续前进
+    if count_Crossing_2 >= 800:
+        count_Crossing_2 = 0
+        flag_Crossing_2 = 0
+        flag_Crossing_over = 1   # 该标志位保证只进行一次斑马线元素
+    if flag_Crossing_over == 1:
+        v_real = -1
+    # 倒地判断优先级最高，放在最后面
     if (angle - offset_angle) < -7 or (angle - offset_angle) > 7:
         new_motor_speed = 0
         v_back = 0
     else:
         v_back = v_real
+    # 发送速度
     odrive_instance.motor_velocity(0, new_motor_speed, 0)
-
-    stop_count += 1
-    if stop_count >= Stand_time:
-        stop_flag = 1
-    if stop_flag == 1:
-        odrive_instance.motor_velocity(1, v_back, 0)
+    odrive_instance.motor_velocity(1, v_back, 0)
 
 
 def clamp_speed(speed, min_speed, max_speed):

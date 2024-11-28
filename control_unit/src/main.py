@@ -13,6 +13,8 @@ from directional_control.directional_control import (
 import socket
 import serial
 
+from balance_control.balance_control import received_value, value_lock
+
 # 移除所有的日志处理程序，关闭日志模块
 logging.getLogger().handlers.clear()
 
@@ -126,7 +128,29 @@ def servo_listener():
                     # 将数据转发到串口
                     ser.write(data)
                     print("接收到的数据帧:", [hex(x) for x in data])
+                    
+def speed_BackWheel_listener():
+    """
+    新的 UDP 监听线程，用于后轮速度数据送。
+    """
+    global received_value,value_lock
+    data_port = 12345  # 新的监听端口
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.bind((servo_config["udp_host"], data_port))
+        print(f"后轮监听线程已启动，正在监听端口 {data_port}...")
 
+        while not stop_event.is_set():
+            data, addr = sock.recvfrom(1024)
+            if data:
+                try:
+                    # 解码并转换为整形
+                    value = int(data.decode("utf-8").strip())
+                    # 存储到全局变量
+                    with value_lock:
+                        received_value = value
+                    # print(f"接收到的浮点数: {value}")
+                except ValueError:
+                    print(f"接收到无法解析的数据: {data}")
 
 def main():
     # 在启动线程之前执行系统自检
@@ -155,6 +179,10 @@ def main():
         threading.Thread(
             target=servo_listener, name="ServoListener"
         ),  # 新增的 servo_listener 线程
+        threading.Thread(
+            target=speed_BackWheel_listener,
+            name="SpeedBackWheelListener",
+        ),
     ]
 
     # 启动所有线程
