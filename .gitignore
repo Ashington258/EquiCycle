@@ -71,3 +71,9 @@ dataset
 dataset
 _.md
 
+# 忽略 MP4文件
+*.mp4
+
+# 忽略 jpg 文件
+
+*.jpg
