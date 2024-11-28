@@ -104,7 +104,7 @@ def lane_process(
     if len(intersection_points) == 2:
         center_x = int((intersection_points[0][0] + intersection_points[1][0]) / 2)
         center_y = int(horizontal_line_y)
-
+        # todo 对计算得到的中点进行平滑滤波
         # 计算center_x与target_x的差值
         difference = center_x - target_x
 
@@ -322,11 +322,14 @@ def process_avoid_obstacle(frame, *args, **kwargs):
     odrive_control.motor_velocity(1, 0.5)
     odrive_control.motor_velocity(1, 0.5)
     # 持续向左打方向之后再持续向右打方向
+
+    # 舵机回中值
+    directional_control.send_protocol_frame_udp(Config.SERVO_MIDPOINT)
     # 向左打方向 200 个脉冲
     for i in range(100):
         # 发送脉冲，向左打方向
         directional_control.send_protocol_frame_udp(
-            Config.CONF_THRESH - i * 2
+            Config.SERVO_MIDPOINT - i * 2
         )  # 每次发送2个脉冲
         time.sleep(0.02)  # 等待 20 毫秒
 
@@ -334,7 +337,7 @@ def process_avoid_obstacle(frame, *args, **kwargs):
     for i in range(100):
         # 发送脉冲，向右打方向
         directional_control.send_protocol_frame_udp(
-            Config.CONF_THRESH + i * 2
+            Config.SERVO_MIDPOINT + i * 2
         )  # 每次发送2个脉冲
         time.sleep(0.02)  # 等待 20 毫秒
     # 恢复行驶速度 # TODO 需要调试速度
