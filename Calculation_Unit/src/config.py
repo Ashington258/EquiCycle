@@ -5,11 +5,13 @@ class Config:
     """配置参数类"""
 
     # 模型路径
-    LANE_MODEL = "Calculation_Unit/model/lane_test.pt"
-    ELEMENTS_MODEL = "Calculation_Unit/model/element_test.pt"
+    LANE_MODEL = "Calculation_Unit/model/best.pt"
+    ELEMENTS_MODEL = "Calculation_Unit/model/elements.pt"
 
     # 输入源配置
-    INPUT_SOURCE = "video/2024_11_29_22_26/4_output.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
+    INPUT_SOURCE = (
+        "video/2024_11_29_22_26/4_output.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
+    )
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
 
     # 控制参数
@@ -39,15 +41,16 @@ class Config:
     TURN_SIGN_CT = 0.8  # 转向标志的置信度
 
     # 任务类参数
+    # 停车和变道类任务
     STABILIZATION_TIME = 1.5  # 停车后等待车身稳定时间
     LANE_CHANGE_ANGLE = 100  # 变道角度
     LANE_CHANGE_SPEED = -1  # 变道速度
     PARKING_TIME = 10  # 停车时间
     LANE_CHANGE_TIME = 8  # 变道时间
     # TODO 真正需要标定的恒定量,计算出来后作为恒定两
-    LANE_DISTANCE = LANE_CHANGE_SPEED * math.sin(LANE_CHANGE_ANGLE) * LANE_CHANGE_TIME
+    # LANE_DISTANCE = LANE_CHANGE_SPEED * math.sin(LANE_CHANGE_ANGLE) * LANE_CHANGE_TIME
 
-    # 避障类参数
+    # 避障类任务
     AVOID_SPEED = -0.5
     AVOID_ANGLE = 1
 

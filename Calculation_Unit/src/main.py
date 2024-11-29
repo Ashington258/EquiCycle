@@ -196,7 +196,7 @@ def elements_process(
         # 检查是否检测到斑马线或者转向标志
         if (
             class_name in ["zebra", "turn_sign"]
-            and filtered_scores[i] >=Config.TURN_SIGN_CT
+            and filtered_scores[i] >= Config.TURN_SIGN_CT
         ):
             if stop_and_turn_done:
                 continue
@@ -376,6 +376,7 @@ def process_avoid_obstacle(frame, *args, **kwargs):
     # 舵机回中值
     directional_control.send_protocol_frame_udp(Config.SERVO_MIDPOINT)
     # 向左打方向 200 个脉冲
+    # BUG 存在问题
     for i in range(100):
         # 发送脉冲，向左打方向
         directional_control.send_protocol_frame_udp(
@@ -387,7 +388,9 @@ def process_avoid_obstacle(frame, *args, **kwargs):
     for i in range(100):
         # 发送脉冲，向右打方向
         directional_control.send_protocol_frame_udp(
-            Config.SERVO_MIDPOINT + i * 2
+            # BUG 存在问题
+            Config.SERVO_MIDPOINT
+            + i * 2
         )  # 每次发送2个脉冲
         time.sleep(0.02)  # 等待 20 毫秒
 
