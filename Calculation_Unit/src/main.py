@@ -196,7 +196,7 @@ def elements_process(
         # 检查是否检测到斑马线或者转向标志
         if (
             class_name in ["zebra", "turn_sign"]
-            and filtered_scores[i] >= Config.ZEBRA_CT
+            and filtered_scores[i] >=Config.TURN_SIGN_CT
         ):
             if stop_and_turn_done:
                 continue

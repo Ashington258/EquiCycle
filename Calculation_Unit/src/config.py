@@ -5,11 +5,11 @@ class Config:
     """配置参数类"""
 
     # 模型路径
-    LANE_MODEL = "Calculation_Unit/model/best.pt"
-    ELEMENTS_MODEL = "Calculation_Unit/model/elements.pt"
+    LANE_MODEL = "Calculation_Unit/model/lane_test.pt"
+    ELEMENTS_MODEL = "Calculation_Unit/model/element_test.pt"
 
     # 输入源配置
-    INPUT_SOURCE = "video/640_zebra.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
+    INPUT_SOURCE = "video/2024_11_29_22_26/4_output.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
 
     # 控制参数
@@ -59,10 +59,15 @@ class Config:
         "R 0",
         "R 1",
     ]
+    # ELEMENTS_CLASS_NAME = [
+    #     "cone",
+    #     "zebra",
+    #     "turn_sign",
+    # ]
     ELEMENTS_CLASS_NAME = [
-        "cone",
         "zebra",
         "turn_sign",
+        "cone",
     ]
 
 
