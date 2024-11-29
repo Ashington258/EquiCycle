@@ -161,7 +161,7 @@ def elements_process(
     cone_detection_start_time,
     last_cone_count_time,
     avoid_obstacle_done,
-    zebra_or_turn_detection_start_time ,  # 新增参数：斑马线/转向标志检测开始时间
+    zebra_or_turn_detection_start_time,  # 新增参数：斑马线/转向标志检测开始时间
     stop_and_turn_done,  # 新增参数：确保STOP_AND_TURN只执行一次
 ):
     """处理元素检测并返回相关标志和计数信息"""
@@ -181,7 +181,10 @@ def elements_process(
         class_name = elements_class_name[elements_class_id]
 
         # 检查是否检测到斑马线或者转向标志
-        if class_name in ["zebra", "turn_sign"] and filtered_scores[i] >= Config.ZEBRA_CT:
+        if (
+            class_name in ["zebra", "turn_sign"]
+            and filtered_scores[i] >= Config.ZEBRA_CT
+        ):
             if stop_and_turn_done:
                 continue
 
@@ -208,9 +211,7 @@ def elements_process(
                 last_cone_count_time is None
                 or time.time() - last_cone_count_time >= Config.CONE_DET_COOLING_TIME
             ):
-                if (
-                    cone_detection_start_time is None
-                ):  # 锥桶检测开始时间
+                if cone_detection_start_time is None:  # 锥桶检测开始时间
                     cone_detection_start_time = time.time()
                 else:
                     elapsed_time = time.time() - cone_detection_start_time
@@ -251,7 +252,6 @@ def elements_process(
     )
 
 
-
 def process_idle(frame, *args, **kwargs):
     """处理车道检测和元素检测逻辑"""
     yolo_processor_lane = kwargs.get("yolo_processor_lane")
@@ -269,7 +269,9 @@ def process_idle(frame, *args, **kwargs):
     )  # 锥桶检测计时器
     last_cone_count_time = kwargs.get("last_cone_count_time", None)  # 上次锥桶计数时间
     avoid_obstacle_done = kwargs.get("avoid_obstacle_done", False)  # 避障任务是否完成
-    zebra_or_turn_detection_start_time = kwargs.get("zebra_or_turn_detection_start_time", None)
+    zebra_or_turn_detection_start_time = kwargs.get(
+        "zebra_or_turn_detection_start_time", None
+    )
     stop_and_turn_done = kwargs.get("stop_and_turn_done", False)
 
     # CORE 运行 yolo 进行推理
@@ -322,7 +324,6 @@ def process_idle(frame, *args, **kwargs):
         zebra_or_turn_detection_start_time,  # 返回更新后的时间戳
         stop_and_turn_done,  # 返回任务标志
     )
-
 
 
 def process_stop_and_turn(frame, *args, **kwargs):
@@ -446,7 +447,7 @@ def main():
                 cone_detection_start_time,
                 last_cone_count_time,
                 detected_zebra_or_turn,
-                avoid_obstacle_done, 
+                avoid_obstacle_done,
                 zebra_or_turn_detection_start_time,
                 stop_and_turn_done,
             ) = process_idle(
