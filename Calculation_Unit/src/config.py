@@ -1,3 +1,6 @@
+import math
+
+
 class Config:
     """配置参数类"""
 
@@ -6,7 +9,7 @@ class Config:
     ELEMENTS_MODEL = "Calculation_Unit/model/elements.pt"
 
     # 输入源配置
-    INPUT_SOURCE = "video/640_zebra.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
+    INPUT_SOURCE = "1_output.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
 
     # 控制参数
@@ -14,6 +17,7 @@ class Config:
     CAR_SPEED = 1  # 后轮电机速度，车辆行驶速度
     R = 250  # 调节舵机力度的参数，越大舵机力度越小
     SERVO_MIDPOINT = 960  # 舵机中值脉冲宽度
+    ALPAH = 0.3  # 平滑系数，范围在 0-1，数值越小平滑程度越高
 
     # 目标位置参数
     HORIZONTAL_LINE_Y = 280  # 横线的Y坐标
@@ -40,6 +44,12 @@ class Config:
     LANE_CHANGE_SPEED = -1  # 变道速度
     PARKING_TIME = 10  # 停车时间
     LANE_CHANGE_TIME = 8  # 变道时间
+    # TODO 真正需要标定的恒定量,计算出来后作为恒定两
+    LANE_DISTANCE = LANE_CHANGE_SPEED * math.sin(LANE_CHANGE_ANGLE) * LANE_CHANGE_TIME
+
+    # 避障类参数
+    AVOID_SPEED = -0.5
+    AVOID_ANGLE = 1
 
     # 定义类别名称
     LANE_CLASS_NAME = [
@@ -54,3 +64,7 @@ class Config:
         "zebra",
         "turn_sign",
     ]
+
+
+if __name__ == "__main__":
+    print(Config.LANE_DISTANCE)
