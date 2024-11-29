@@ -9,7 +9,7 @@ class Config:
     ELEMENTS_MODEL = "Calculation_Unit/model/elements.pt"
 
     # 输入源配置
-    INPUT_SOURCE = "dataset/video/640_2.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
+    INPUT_SOURCE = "1_output.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
 
     # 控制参数

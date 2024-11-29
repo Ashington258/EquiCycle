@@ -13,7 +13,7 @@ from skimage.morphology import skeletonize
 import torch
 
 odrive_control = ControlFlowSender("192.168.2.113", 5000)
-directional_control = DirectionalControl("192.168.2.113", 5558, 800, 2000)
+directional_control = DirectionalControl("127.0.0.1", 5558, 800, 2000)
 
 
 class State(Enum):
