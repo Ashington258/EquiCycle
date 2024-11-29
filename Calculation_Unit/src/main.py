@@ -355,8 +355,8 @@ def process_avoid_obstacle(frame, *args, **kwargs):
     print("♻执行避障任务")
 
     # 速度降低准备避障
-    odrive_control.motor_velocity(1, 0.5)
-    odrive_control.motor_velocity(1, 0.5)
+    odrive_control.motor_velocity(1, Config.AVOID_SPEED)
+    odrive_control.motor_velocity(1, Config.AVOID_SPEED)
     # 持续向左打方向之后再持续向右打方向
 
     # 舵机回中值
