@@ -14,7 +14,7 @@ import socket
 import serial
 
 from balance_control.balance_control import process_speedBack_message  # 导入 process_speedBack_message 中的函数
-
+from balance_control.balance_control import process_steer_dynamicAngle
 # 移除所有的日志处理程序，关闭日志模块
 logging.getLogger().handlers.clear()
 
@@ -127,6 +127,7 @@ def servo_listener():
                 if pulse_value is not None:
                     # 将数据转发到串口
                     ser.write(data)
+                    process_steer_dynamicAngle(pulse_value)
                     print("接收到的数据帧:", [hex(x) for x in data])
                     
 def speed_BackWheel_listener():

@@ -67,12 +67,13 @@ class PIDController:
 
 # offset_angle = 1.7 + (parameters['pulse_value'] - 978)
 offset_angle = 2.05     # 左右零点
-v_basic = -1.7              # 直立之后后轮速度
-Stand_time = 800       # 直立时间 2250 -> 30s
+factor_dynamic_steer = 0.0067
+v_basic = -3              # 直立之后后轮速度
+Stand_time = 50000000       # 直立时间 2250 -> 30s
 class CascadedPIDController:
     def __init__(self):
-        self.gyro_pid = PIDController(kp=3.3, ki=0, kd=0.07,limit = 0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
-        self.angle_pid = PIDController(kp=3.7, ki=0.000007, kd=3,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        self.gyro_pid = PIDController(kp=3.7, ki=0, kd=0.07,limit = 0, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        self.angle_pid = PIDController(kp=3.5, ki=0.00001, kd=3,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
         self.velocity_pid = PIDController(kp=-0.12, ki=-0.0009, kd=-0.03,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
         # self.velocity_pid = PIDController(kp=-0, ki=-0, kd=-0,limit = 10000, output_limits=(-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
        
@@ -159,6 +160,17 @@ def process_speedBack_message(message):
     else:
         v_vision = None
 
+dynamic_angle_steer = 0.0
+def process_steer_dynamicAngle(message):
+    # 解析并处理控制消息
+    global dynamic_angle_steer,factor_dynamic_steer
+    
+    if message <830:
+        message = 830
+    elif message > 1130:
+        message = 1130
+    # message = message < 830 ? 830 : ( message > 1130 ? 1130 : message )
+    dynamic_angle_steer = factor_dynamic_steer * (message-978)
                 
 CascadePIDclass = CascadedPIDController()
 
@@ -166,13 +178,14 @@ def adjust_motor_speed(odrive_instance, PIDclass):
     
     global stop_count, stop_flag,flag_go,v_real
     global flag_Crossing_1,flag_Crossing_2,flag_Crossing_over,count_Crossing_2
+    global dynamic_angle_steer
     
     with control_params_lock:
         gyro = control_params.get("gyro", {}).get("x", 0.0)
         angle = control_params.get("euler_angles", {}).get("pitch", 0.0)
         motor_speed = control_params.get("motor_speed", 0.0)
 
-    output = PIDclass.update(gyro, angle, motor_speed)
+    output = PIDclass.update(gyro, angle-dynamic_angle_steer, motor_speed)
 
     new_motor_speed = output
 
