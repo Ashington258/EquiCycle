@@ -33,11 +33,11 @@ class Config:
     TURN_SIGN_CT = 0.8  # 转向标志的置信度
 
     # 任务类参数
-    STABILIZATION_TIME = 1.5 # 停车后等待车身稳定时间
-    LANE_CHANGE_ANGLE = 100 # 变道角度
-    LANE_CHANGE_SPEED = -1 # 变道速度
-    PARKING_TIME = 10 # 停车时间
-    LANE_CHANGE_TIME = 8 # 变道时间
+    STABILIZATION_TIME = 1.5  # 停车后等待车身稳定时间
+    LANE_CHANGE_ANGLE = 100  # 变道角度
+    LANE_CHANGE_SPEED = -1  # 变道速度
+    PARKING_TIME = 10  # 停车时间
+    LANE_CHANGE_TIME = 8  # 变道时间
 
     # 定义类别名称
     LANE_CLASS_NAME = [
