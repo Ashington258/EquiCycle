@@ -330,19 +330,22 @@ def process_stop_and_turn(frame, *args, **kwargs):
     """处理停车和转向逻辑"""
     # 注意由于并未使用多线程，进入该状态的车将会关闭循迹
     print("♻执行停车和转向任务")
-    # 通过UDP协议发送停车信号 v 1 0
+    # 1. 停车
     odrive_control.motor_velocity(1, 0)
-    time.sleep(9.9)  # 模拟停车
     print("完成停车，执行转向")
-    # 首先回中值状态
+    # 2. 停车后等待车身稳定
+    time.sleep(Config.STABILIZATION_TIME)  # 等待车停稳
+    # 3. 舵机回中值
     directional_control.send_protocol_frame_udp(Config.SERVO_MIDPOINT)
-    # 然后向左打一个小角度
-    directional_control.send_protocol_frame_udp(Config.SERVO_MIDPOINT - 50)
-    # 车辆前进
-    odrive_control.motor_velocity(1, 1)
-    # 车辆前进2s，到达预计的位置
-    # TODO 需要调参
-    time.sleep(2)
+    # 4. 左变道设定的变道角度
+    directional_control.send_protocol_frame_udp(
+        Config.SERVO_MIDPOINT + Config.LANE_CHANGE_ANGLE
+    )
+    # 5. 开始停车
+    time.sleep(Config.PARKING_TIME - Config.STABILIZATION_TIME)
+    # 6. 前进变道距离，使用变道速度
+    odrive_control.motor_velocity(1, Config.LANE_CHANGE_SPEED)
+    time.sleep(Config.LANE_CHANGE_TIME)
 
     return frame
 
