@@ -22,6 +22,10 @@ class State(Enum):
     AVOID_OBSTACLE = 3  # 避障
 
 
+# 添加全局变量用于存储上一次的平滑中点
+last_center_x = None
+
+
 def lane_process(
     frame,
     results,
@@ -32,7 +36,7 @@ def lane_process(
     servo_midpoint,
     directional_control,
 ):
-    """处理每帧，计算交点和舵机控制，并返回处理后的帧"""
+    global last_center_x  # 引用全局变量
     if frame is None:
         return frame
 
@@ -102,11 +106,20 @@ def lane_process(
 
     # 计算交点中点和舵机控制
     if len(intersection_points) == 2:
-        center_x = int((intersection_points[0][0] + intersection_points[1][0]) / 2)
+        raw_center_x = int((intersection_points[0][0] + intersection_points[1][0]) / 2)
         center_y = int(horizontal_line_y)
-        # todo 对计算得到的中点进行平滑滤波
-        # 计算center_x与target_x的差值
-        difference = center_x - target_x
+
+        # 使用指数加权平均法平滑中点值
+        if last_center_x is None:
+            smoothed_center_x = raw_center_x
+        else:
+            smoothed_center_x = int(
+                Config.ALPAH * raw_center_x + (1 - Config.ALPAH) * last_center_x
+            )
+        last_center_x = smoothed_center_x  # 更新上一次中点
+
+        # 计算 smoothed_center_x 与 target_x 的差值
+        difference = smoothed_center_x - target_x
 
         # 计算舵机角度
         theta = np.arctan(difference / R)
@@ -118,11 +131,11 @@ def lane_process(
         directional_control.send_protocol_frame_udp(pulse_width)
 
         # 绘制中心点和调试信息
-        cv2.circle(frame, (center_x, center_y), 8, (0, 0, 255), -1)
+        cv2.circle(frame, (smoothed_center_x, center_y), 8, (0, 0, 255), -1)
         cv2.putText(
             frame,
-            f"Center: ({center_x}, {center_y})",
-            (center_x + 10, center_y - 10),
+            f"Center: ({smoothed_center_x}, {center_y})",
+            (smoothed_center_x + 10, center_y - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (0, 255, 255),
@@ -132,7 +145,7 @@ def lane_process(
         cv2.putText(
             frame,
             f"Diff: {difference}, Theta: {np.degrees(theta):.2f}°",
-            (center_x + 10, center_y + 20),
+            (smoothed_center_x + 10, center_y + 20),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (255, 255, 0),
@@ -142,7 +155,7 @@ def lane_process(
         cv2.putText(
             frame,
             f"Pulse: {pulse_width}",
-            (center_x + 10, center_y + 40),
+            (smoothed_center_x + 10, center_y + 40),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (255, 0, 255),
@@ -376,10 +389,25 @@ def process_avoid_obstacle(frame, *args, **kwargs):
             Config.SERVO_MIDPOINT + i * 2
         )  # 每次发送2个脉冲
         time.sleep(0.02)  # 等待 20 毫秒
+
     # 恢复行驶速度 # TODO 需要调试速度
     odrive_control.motor_velocity(1, Config.CAR_SPEED)
     print("避障完成")
     return frame
+
+
+def send_pulses(total_pulses):
+    # 计算脉冲的步长，正负脉冲的情况
+    step = 2 if total_pulses > 0 else -2
+    abs_pulses = abs(total_pulses)  # 取脉冲数的绝对值
+
+    for i in range(abs_pulses):
+
+        directional_control.send_protocol_frame_udp(
+            Config.SERVO_MIDPOINT - i * step
+        )  # 每次发送2个脉冲
+        print(i * step)
+        time.sleep(0.02)  # 等待 20 毫秒
 
 
 def main():
