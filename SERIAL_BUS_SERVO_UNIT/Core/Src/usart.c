@@ -151,7 +151,7 @@ void ProcessFrame(uint8_t *frame)
   if (crc != frame[3])
   {
     // CRC不匹配，丢弃
-    // return;
+    return;
   }
 
   Servo_SetPulseWidth(pulse_value);
