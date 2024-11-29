@@ -44,6 +44,11 @@ class Config:
     # TODO 真正需要标定的恒定量,计算出来后作为恒定两
     LANE_DISTANCE = LANE_CHANGE_SPEED * math.sin(LANE_CHANGE_ANGLE) * LANE_CHANGE_TIME
 
+    # 避障类参数
+    AVOID_SPEED = -0.5
+    AVOID_ANGLE = 1
+    
+
     # 定义类别名称
     LANE_CLASS_NAME = [
         "__background__",  # 替换为实际类别名
