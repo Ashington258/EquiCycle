@@ -1,3 +1,6 @@
+import math
+
+
 class Config:
     """配置参数类"""
 
@@ -38,6 +41,8 @@ class Config:
     LANE_CHANGE_SPEED = -1  # 变道速度
     PARKING_TIME = 10  # 停车时间
     LANE_CHANGE_TIME = 8  # 变道时间
+    # TODO 真正需要标定的恒定量,计算出来后作为恒定两
+    LANE_DISTANCE = LANE_CHANGE_SPEED * math.sin(LANE_CHANGE_ANGLE) * LANE_CHANGE_TIME
 
     # 定义类别名称
     LANE_CLASS_NAME = [
@@ -52,3 +57,7 @@ class Config:
         "zebra",
         "turn_sign",
     ]
+
+
+if __name__ == "__main__":
+    print(Config.LANE_DISTANCE)
