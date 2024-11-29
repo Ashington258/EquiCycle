@@ -29,12 +29,12 @@ class Config:
     CONE_CONFIRMATION_DURATION = 1  # 确认锥桶所需的持续检测时间
     CONE_DET_COOLING_TIME = 13  # 锥桶检测冷却时间
     CONE_CT = 0.85  # 锥桶的置信度
-    CONE_IDLE_TIME = 2 #持续IDLE状态时间
+    CONE_IDLE_TIME = 2  # 持续IDLE状态时间
 
     # 斑马线类
     ZEBRA_CT = 0.7  # 斑马线的置信度
-    ZEBRA_OR_TURN_CONFIRMATION_DURATION = 0.3 #持续监测时间
-    ZEBRA_OR_TURN_IDLE_TIME = 1 #持续IDLE状态时间
+    ZEBRA_OR_TURN_CONFIRMATION_DURATION = 0.3  # 持续监测时间
+    ZEBRA_OR_TURN_IDLE_TIME = 1  # 持续IDLE状态时间
     # 转向标志类
     TURN_SIGN_CT = 0.8  # 转向标志的置信度
 
