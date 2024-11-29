@@ -236,7 +236,7 @@ def elements_process(
                             last_cone_count_time = time.time()  # 更新最后一次计数时间
                             cone_detection_start_time = None  # 重置计时器
                             print(f"锥桶检测计数增加！当前锥桶计数: {cone_count}")
-            
+
         else:
             # 如果检测到的锥桶置信度低于 0.9，重置计时器
             cone_detection_start_time = None
@@ -455,7 +455,6 @@ def main():
     cone_to_avoid_timer_start = None
     zebra_or_turn_timer_start = None
 
-
     # CORE 等待视频流准备好
     start_time = time.time()
     while True:
@@ -511,7 +510,10 @@ def main():
                     # 开始计时
                     zebra_or_turn_timer_start = current_time
                     print("检测到斑马线或转向标志，开始计时...")
-                elif current_time - zebra_or_turn_timer_start >= Config.ZEBRA_OR_TURN_IDLE_TIME:
+                elif (
+                    current_time - zebra_or_turn_timer_start
+                    >= Config.ZEBRA_OR_TURN_IDLE_TIME
+                ):
                     # 两秒计时完成后，切换到 STOP_AND_TURN 状态
                     current_state = State.STOP_AND_TURN
                     stop_and_turn_done = True  # 设置为已完成，避免重复执行
@@ -520,7 +522,6 @@ def main():
             else:
                 # 如果计时器未完成或检测条件不再满足，重置计时器
                 zebra_or_turn_timer_start = None
-   
 
             # 如果锥桶计数达到 CONE_TO_AVOID_INDEX，切换到 AVOID_OBSTACLE 状态
             if cone_count >= Config.CONE_TO_AVOID_INDEX and not avoid_obstacle_done:
@@ -565,7 +566,7 @@ def main():
                 1,
                 (255, 255, 0),
                 2,
-            )  
+            )
         if zebra_or_turn_timer_start is not None:
             remaining_time = 2 - (current_time - zebra_or_turn_timer_start)
             cv2.putText(
@@ -577,8 +578,6 @@ def main():
                 (0, 255, 255),
                 2,
             )
-
-
 
         # 显示帧率
         cv2.putText(
