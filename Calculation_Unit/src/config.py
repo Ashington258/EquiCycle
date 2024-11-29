@@ -6,7 +6,7 @@ class Config:
     ELEMENTS_MODEL = "Calculation_Unit/model/elements.pt"
 
     # 输入源配置
-    INPUT_SOURCE = "dataset/video/640_2.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
+    INPUT_SOURCE = "video/640_2.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
 
     # 控制参数
@@ -22,15 +22,15 @@ class Config:
 
     # 锥桶类参数
     CONE_TO_AVOID_INDEX = 3  # 需要避障的锥桶索引
-    CONE_CONFIRMATION_DURATION = 3  # 确认锥桶所需的持续检测时间
+    CONE_CONFIRMATION_DURATION = 1  # 确认锥桶所需的持续检测时间
     CONE_DET_COOLING_TIME = 13  # 锥桶检测冷却时间
     CONE_CT = 0.85  # 锥桶的置信度
 
     # 斑马线类
-    ZEBRA_CT = 0.85  # 斑马线的置信度
-
+    ZEBRA_CT = 0.8  # 斑马线的置信度
+    ZEBRA_OR_TURN_CONFIRMATION_DURATION = 0.5
     # 转向标志类
-    TURN_SIGN_CT = 0.85  # 转向标志的置信度
+    TURN_SIGN_CT = 0.8  # 转向标志的置信度
 
     # 定义类别名称
     LANE_CLASS_NAME = [

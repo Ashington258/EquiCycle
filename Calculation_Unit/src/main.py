@@ -161,6 +161,8 @@ def elements_process(
     cone_detection_start_time,
     last_cone_count_time,
     avoid_obstacle_done,
+    zebra_or_turn_detection_start_time ,  # 新增参数：斑马线/转向标志检测开始时间
+    stop_and_turn_done,  # 新增参数：确保STOP_AND_TURN只执行一次
 ):
     """处理元素检测并返回相关标志和计数信息"""
     detected_target_element = False
@@ -179,11 +181,21 @@ def elements_process(
         class_name = elements_class_name[elements_class_id]
 
         # 检查是否检测到斑马线或者转向标志
-        if (
-            class_name in ["zebra", "turn_sign"]
-            and filtered_scores[i] >= Config.TURN_SIGN_CT
-        ):
-            detected_zebra_or_turn = True
+        if class_name in ["zebra", "turn_sign"] and filtered_scores[i] >= Config.ZEBRA_CT:
+            if stop_and_turn_done:
+                continue
+
+            if zebra_or_turn_detection_start_time is None:
+                zebra_or_turn_detection_start_time = time.time()  # 记录开始时间
+            else:
+                # 计算检测持续时间
+                elapsed_time = time.time() - zebra_or_turn_detection_start_time
+                print(f"检测斑马线/转向标志，检测时间: {elapsed_time:.2f}秒")
+                if elapsed_time >= Config.ZEBRA_OR_TURN_CONFIRMATION_DURATION:
+                    detected_zebra_or_turn = True  # 确认为已检测到
+                    print("检测到斑马线或转向标志，确认完成!")
+        else:
+            zebra_or_turn_detection_start_time = None
 
         # 检查是否检测到锥桶
         if class_name == "cone" and filtered_scores[i] >= Config.CONE_CT:
@@ -196,8 +208,10 @@ def elements_process(
                 last_cone_count_time is None
                 or time.time() - last_cone_count_time >= Config.CONE_DET_COOLING_TIME
             ):
-                if cone_detection_start_time is None:
-                    cone_detection_start_time = time.time()  # 锥桶检测开始时间
+                if (
+                    cone_detection_start_time is None
+                ):  # 锥桶检测开始时间
+                    cone_detection_start_time = time.time()
                 else:
                     elapsed_time = time.time() - cone_detection_start_time
                     if (
@@ -232,7 +246,10 @@ def elements_process(
         cone_count,
         cone_detection_start_time,
         last_cone_count_time,
+        zebra_or_turn_detection_start_time,  # 返回更新后的时间戳
+        stop_and_turn_done,  # 返回任务标志
     )
+
 
 
 def process_idle(frame, *args, **kwargs):
@@ -252,6 +269,8 @@ def process_idle(frame, *args, **kwargs):
     )  # 锥桶检测计时器
     last_cone_count_time = kwargs.get("last_cone_count_time", None)  # 上次锥桶计数时间
     avoid_obstacle_done = kwargs.get("avoid_obstacle_done", False)  # 避障任务是否完成
+    zebra_or_turn_detection_start_time = kwargs.get("zebra_or_turn_detection_start_time", None)
+    stop_and_turn_done = kwargs.get("stop_and_turn_done", False)
 
     # CORE 运行 yolo 进行推理
     results_lane = yolo_processor_lane.infer(frame)
@@ -277,6 +296,8 @@ def process_idle(frame, *args, **kwargs):
         cone_count,
         cone_detection_start_time,
         last_cone_count_time,
+        zebra_or_turn_detection_start_time,  # 返回更新后的时间戳
+        stop_and_turn_done,  # 返回任务标志
     ) = elements_process(
         frame,
         results_elements,
@@ -285,6 +306,8 @@ def process_idle(frame, *args, **kwargs):
         cone_detection_start_time,
         last_cone_count_time,
         avoid_obstacle_done,
+        zebra_or_turn_detection_start_time,
+        stop_and_turn_done,
     )
 
     # 返回处理后的结果
@@ -296,7 +319,10 @@ def process_idle(frame, *args, **kwargs):
         last_cone_count_time,
         detected_zebra_or_turn,
         avoid_obstacle_done,
+        zebra_or_turn_detection_start_time,  # 返回更新后的时间戳
+        stop_and_turn_done,  # 返回任务标志
     )
+
 
 
 def process_stop_and_turn(frame, *args, **kwargs):
@@ -392,6 +418,7 @@ def main():
     last_cone_count_time = None  # 最后一次锥桶计数时间
     stop_and_turn_done = False  # 添加标志，确保只执行一次停车和转向任务
     avoid_obstacle_done = False  # 避障任务是否完成
+    zebra_or_turn_detection_start_time = None
 
     # CORE 等待视频流准备好
     start_time = time.time()
@@ -419,7 +446,9 @@ def main():
                 cone_detection_start_time,
                 last_cone_count_time,
                 detected_zebra_or_turn,
-                avoid_obstacle_done,
+                avoid_obstacle_done, 
+                zebra_or_turn_detection_start_time,
+                stop_and_turn_done,
             ) = process_idle(
                 frame,
                 yolo_processor_lane=yolo_processor_lane,
@@ -435,6 +464,8 @@ def main():
                 cone_detection_start_time=cone_detection_start_time,  # 传递计时器
                 last_cone_count_time=last_cone_count_time,  # 传递最后一次计数时间
                 avoid_obstacle_done=avoid_obstacle_done,  # 传递是否完成避障任务的标志
+                zebra_or_turn_detection_start_time=zebra_or_turn_detection_start_time,
+                stop_and_turn_done=stop_and_turn_done,
             )
 
             # 如果检测到斑马线或转向标志且置信度 >= 0.9，切换到 STOP_AND_TURN 状态
@@ -442,7 +473,7 @@ def main():
             if detected_zebra_or_turn and not stop_and_turn_done:
                 current_state = State.STOP_AND_TURN
                 stop_and_turn_done = True  # 设置为已完成，避免重复执行
-                print("🆗检测到斑马线或转向标志，切换到 STOP_AND_TURN 状态！")
+                print("检测到斑马线或转向标志，切换到 STOP_AND_TURN 状态！")
 
             # 如果锥桶计数达到 CONE_TO_AVOID_INDEX，切换到 AVOID_OBSTACLE 状态
 
@@ -450,7 +481,7 @@ def main():
                 current_state = State.AVOID_OBSTACLE
                 avoid_obstacle_done = True  # 设置为已完成，避免重复执行
                 print(
-                    f"🆗锥桶计数达到 {Config.CONE_TO_AVOID_INDEX}，切换到 AVOID_OBSTACLE 状态！"
+                    f"锥桶计数达到 {Config.CONE_TO_AVOID_INDEX}，切换到 AVOID_OBSTACLE 状态！"
                 )
 
         elif current_state == State.AVOID_OBSTACLE:
