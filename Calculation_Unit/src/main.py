@@ -314,6 +314,7 @@ def process_stop_and_turn(frame, *args, **kwargs):
     # 车辆前进
     odrive_control.motor_velocity(1, 1)
     # 车辆前进2s，到达预计的位置
+    # TODO 需要调参
     time.sleep(2)
 
     return frame
