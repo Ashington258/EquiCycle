@@ -6,7 +6,7 @@ class Config:
 
     # 模型路径
     LANE_MODEL = "Calculation_Unit/model/TODAY.pt"
-    ELEMENTS_MODEL = "Calculation_Unit/model/elements.pt"
+    ELEMENTS_MODEL = "Calculation_Unit/model/newest_elements.pt"
 
     # 输入源配置
     INPUT_SOURCE = "2024_11_30_2.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
