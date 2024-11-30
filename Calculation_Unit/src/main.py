@@ -24,6 +24,7 @@ class State(Enum):
 
 # 添加全局变量用于存储上一次的平滑中点
 last_center_x = None
+pulse_width = None
 
 
 def lane_process(
@@ -36,7 +37,7 @@ def lane_process(
     servo_midpoint,
     directional_control,
 ):
-    global last_center_x  # 引用全局变量
+    global last_center_x,pulse_width  # 引用全局变量
     if frame is None:
         return frame
 
@@ -374,25 +375,47 @@ def process_avoid_obstacle(frame, *args, **kwargs):
     # 持续向左打方向之后再持续向右打方向
 
     # 舵机回中值
-    directional_control.send_protocol_frame_udp(Config.SERVO_MIDPOINT)
+    # directional_control.send_protocol_frame_udp(Config.SERVO_MIDPOINT)
+
     # 向左打方向 200 个脉冲
     # BUG 存在问题
-    for i in range(100):
+    for i in range(50):
         # 发送脉冲，向左打方向
         directional_control.send_protocol_frame_udp(
-            Config.SERVO_MIDPOINT - i * 2
+            pulse_width - i * 2
         )  # 每次发送2个脉冲
+        if i == 49:
+            record_last_pulse = pulse_width - i * 2
         time.sleep(0.02)  # 等待 20 毫秒
 
     # 向右打方向 200 个脉冲
-    for i in range(100):
+    for i in range(50):
         # 发送脉冲，向右打方向
         directional_control.send_protocol_frame_udp(
             # BUG 存在问题
-            Config.SERVO_MIDPOINT
+            record_last_pulse
             + i * 2
         )  # 每次发送2个脉冲
         time.sleep(0.02)  # 等待 20 毫秒
+    # 向右打方向 200 个脉冲
+    for i in range(50):
+        # 发送脉冲，向左打方向
+        directional_control.send_protocol_frame_udp(
+            pulse_width + i * 2
+        )  # 每次发送2个脉冲
+        if i == 49:
+            record_last_pulse = pulse_width + i * 2
+        time.sleep(0.02)  # 等待 20 毫秒
+    # 向左打方向 200 个脉冲
+    # BUG 存在问题
+    for i in range(50):
+        # 发送脉冲，向左打方向
+        directional_control.send_protocol_frame_udp(
+            record_last_pulse - i * 2
+        )  # 每次发送2个脉冲
+        time.sleep(0.02)  # 等待 20 毫秒
+    
+    
 
     # 恢复行驶速度 # TODO 需要调试速度
     odrive_control.motor_velocity(1, Config.CAR_SPEED)

@@ -10,7 +10,7 @@ class Config:
 
     # 输入源配置
     INPUT_SOURCE = (
-        "video/2024_11_29_22_26/4_output.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
+        "calculate_unit/Host/src/beta/640.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     )
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
 
@@ -23,11 +23,11 @@ class Config:
 
     # 目标位置参数
     HORIZONTAL_LINE_Y = 280  # 横线的Y坐标
-    TARGET_X = 320  # 目标的 X 坐标（可以根据实际需求调整）
+    TARGET_X = 320  # 目标的 X 坐标（摄像头中值）
     DISTANCE_THRESHOLD = 50  # 例：50像素
 
     # 锥桶类参数
-    CONE_TO_AVOID_INDEX = 3  # 需要避障的锥桶索引
+    CONE_TO_AVOID_INDEX = 1  # 需要避障的锥桶索引
     CONE_CONFIRMATION_DURATION = 1  # 确认锥桶所需的持续检测时间
     CONE_DET_COOLING_TIME = 13  # 锥桶检测冷却时间
     CONE_CT = 0.85  # 锥桶的置信度
@@ -44,7 +44,7 @@ class Config:
     # 停车和变道类任务
     STABILIZATION_TIME = 1.5  # 停车后等待车身稳定时间
     LANE_CHANGE_ANGLE = 100  # 变道角度
-    LANE_CHANGE_SPEED = -1  # 变道速度
+    LANE_CHANGE_SPEED = -2  # 变道速度
     PARKING_TIME = 10  # 停车时间
     LANE_CHANGE_TIME = 8  # 变道时间
     # TODO 真正需要标定的恒定量,计算出来后作为恒定两
@@ -62,16 +62,16 @@ class Config:
         "R 0",
         "R 1",
     ]
-    # ELEMENTS_CLASS_NAME = [
-    #     "cone",
-    #     "zebra",
-    #     "turn_sign",
-    # ]
     ELEMENTS_CLASS_NAME = [
+        "cone",
         "zebra",
         "turn_sign",
-        "cone",
     ]
+    # ELEMENTS_CLASS_NAME = [
+    #     "zebra",
+    #     "turn_sign",
+    #     "cone",
+    # ]
 
 
 if __name__ == "__main__":
