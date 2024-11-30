@@ -61,6 +61,7 @@ class Config:
         "R 1",
     ]
     ELEMENTS_CLASS_NAME = [
+        "__background__",
         "cone",
         "zebra",
         "turn_sign",
