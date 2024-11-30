@@ -5,13 +5,11 @@ class Config:
     """配置参数类"""
 
     # 模型路径
-    LANE_MODEL = "Calculation_Unit/model/best.pt"
+    LANE_MODEL = "Calculation_Unit/model/TODAY.pt"
     ELEMENTS_MODEL = "Calculation_Unit/model/elements.pt"
 
     # 输入源配置
-    INPUT_SOURCE = (
-        "http://192.168.2.113:5000"  # 支持图片路径、视频路径、摄像头ID或URL
-    )
+    INPUT_SOURCE = "2024_11_30_2.mp4"  # 支持图片路径、视频路径、摄像头ID或URL
     IMG_SIZE = 640  # 输入图像宽度，保持宽高比调整
 
     # 控制参数
