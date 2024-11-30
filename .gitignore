@@ -57,3 +57,9 @@ SERIAL_BUS_SERVO_UNIT/build/Debug/CMakeFiles/SERIAL_BUS_SERVO_UNIT.dir/Drivers/S
 SERIAL_BUS_SERVO_UNIT/build/Debug/CMakeFiles/SERIAL_BUS_SERVO_UNIT.dir/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_uart.c.obj
 SERIAL_BUS_SERVO_UNIT/build/Debug/CMakeFiles/SERIAL_BUS_SERVO_UNIT.dir/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal.c.obj
 SERIAL_BUS_SERVO_UNIT/build/Debug/cmake/stm32cubemx/cmake_install.cmake
+
+# 忽略__pychache__文件夹
+__pycache__/
+
+# 忽略视频文件
+*.mp4
