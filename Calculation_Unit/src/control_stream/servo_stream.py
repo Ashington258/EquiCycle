@@ -5,7 +5,7 @@ import socket
 class DirectionalControl:
 
     def __init__(
-        self, udp_ip="192.168.2.113", udp_port=5000, min_pulse=800, max_pulse=1800
+        self, udp_ip="192.168.2.113", udp_port=5558, min_pulse=800, max_pulse=1800
     ):
         self.pulse_value = None
         self.lock = threading.Lock()  # 用于线程安全

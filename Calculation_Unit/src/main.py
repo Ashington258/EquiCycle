@@ -12,8 +12,8 @@ from config import Config
 from skimage.morphology import skeletonize
 import torch
 
-odrive_control = ControlFlowSender("192.168.2.113", 5000)
-directional_control = DirectionalControl("127.0.0.1", 5558, 800, 2000)
+odrive_control = ControlFlowSender("192.168.2.113", 12345)
+directional_control = DirectionalControl("192.168.2.113", 5558, 800, 2000)
 
 
 class State(Enum):
@@ -120,13 +120,13 @@ def lane_process(
         last_center_x = smoothed_center_x  # 更新上一次中点
 
         # 计算 smoothed_center_x 与 target_x 的差值
-        difference = smoothed_center_x - target_x
+        difference = -smoothed_center_x + target_x
 
         # 计算舵机角度
         theta = np.arctan(difference / R)
 
         # 映射角度到脉冲宽度（包含中值）
-        pulse_width = int(abs((200 / 27) * np.degrees(theta)) + servo_midpoint)
+        pulse_width = int((200 / 27) * np.degrees(theta) + servo_midpoint)
 
         # 发送舵机控制命令
         directional_control.send_protocol_frame_udp(pulse_width)
@@ -583,7 +583,7 @@ def main():
 
         # 显示计时器
         if cone_to_avoid_timer_start is not None:
-            remaining_time = 2 - (current_time - cone_to_avoid_timer_start)
+            remaining_time =  (current_time - cone_to_avoid_timer_start)
             cv2.putText(
                 frame,
                 f"Obstacle Timer: {remaining_time:.2f}s",
@@ -594,7 +594,7 @@ def main():
                 2,
             )
         if zebra_or_turn_timer_start is not None:
-            remaining_time = 2 - (current_time - zebra_or_turn_timer_start)
+            remaining_time = (current_time - zebra_or_turn_timer_start)
             cv2.putText(
                 frame,
                 f"Zebra/Turn Timer: {remaining_time:.2f}s",
