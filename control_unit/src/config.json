@@ -5,7 +5,7 @@
         "zmq_port": 5555
     },
     "odrive": {
-        "port": "/dev/ttyUSB2",
+        "port": "/dev/ttyACM0",
         "baudrate": 460800,
         "zmq_port": 5556
     },
@@ -17,5 +17,9 @@
     },
     "monitoring": {
         "zmq_port": 5555
+    },
+    "SpeedFromVision_Listener": {
+        "zmq_port": 12345
     }
+    
 }
