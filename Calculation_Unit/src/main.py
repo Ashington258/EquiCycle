@@ -12,14 +12,19 @@ from config import Config
 from skimage.morphology import skeletonize
 import torch
 
-odrive_control = ControlFlowSender("192.168.2.113", 5000)
-directional_control = DirectionalControl("192.168.2.113", 5001, 800, 2000)
+odrive_control = ControlFlowSender("192.168.2.113", 12345)
+directional_control = DirectionalControl("192.168.2.113", 5558, 800, 2000)
 
 
 class State(Enum):
     IDLE = 1  # 车道检测和元素检测
     STOP_AND_TURN = 2  # 停车和转向
     AVOID_OBSTACLE = 3  # 避障
+
+
+# 添加全局变量用于存储上一次的平滑中点
+last_center_x = None
+pulse_width = None
 
 
 def lane_process(
@@ -32,7 +37,7 @@ def lane_process(
     servo_midpoint,
     directional_control,
 ):
-    """处理每帧，计算交点和舵机控制，并返回处理后的帧"""
+    global last_center_x,pulse_width  # 引用全局变量
     if frame is None:
         return frame
 
@@ -102,27 +107,36 @@ def lane_process(
 
     # 计算交点中点和舵机控制
     if len(intersection_points) == 2:
-        center_x = int((intersection_points[0][0] + intersection_points[1][0]) / 2)
+        raw_center_x = int((intersection_points[0][0] + intersection_points[1][0]) / 2)
         center_y = int(horizontal_line_y)
-        # todo 对计算得到的中点进行平滑滤波
-        # 计算center_x与target_x的差值
-        difference = center_x - target_x
+
+        # 使用指数加权平均法平滑中点值
+        if last_center_x is None:
+            smoothed_center_x = raw_center_x
+        else:
+            smoothed_center_x = int(
+                Config.ALPAH * raw_center_x + (1 - Config.ALPAH) * last_center_x
+            )
+        last_center_x = smoothed_center_x  # 更新上一次中点
+
+        # 计算 smoothed_center_x 与 target_x 的差值
+        difference = -smoothed_center_x + target_x
 
         # 计算舵机角度
         theta = np.arctan(difference / R)
 
         # 映射角度到脉冲宽度（包含中值）
-        pulse_width = int(abs((200 / 27) * np.degrees(theta)) + servo_midpoint)
+        pulse_width = int((200 / 27) * np.degrees(theta) + servo_midpoint)
 
         # 发送舵机控制命令
         directional_control.send_protocol_frame_udp(pulse_width)
 
         # 绘制中心点和调试信息
-        cv2.circle(frame, (center_x, center_y), 8, (0, 0, 255), -1)
+        cv2.circle(frame, (smoothed_center_x, center_y), 8, (0, 0, 255), -1)
         cv2.putText(
             frame,
-            f"Center: ({center_x}, {center_y})",
-            (center_x + 10, center_y - 10),
+            f"Center: ({smoothed_center_x}, {center_y})",
+            (smoothed_center_x + 10, center_y - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (0, 255, 255),
@@ -132,7 +146,7 @@ def lane_process(
         cv2.putText(
             frame,
             f"Diff: {difference}, Theta: {np.degrees(theta):.2f}°",
-            (center_x + 10, center_y + 20),
+            (smoothed_center_x + 10, center_y + 20),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (255, 255, 0),
@@ -142,7 +156,7 @@ def lane_process(
         cv2.putText(
             frame,
             f"Pulse: {pulse_width}",
-            (center_x + 10, center_y + 40),
+            (smoothed_center_x + 10, center_y + 40),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (255, 0, 255),
@@ -161,6 +175,8 @@ def elements_process(
     cone_detection_start_time,
     last_cone_count_time,
     avoid_obstacle_done,
+    zebra_or_turn_detection_start_time,  # 新增参数：斑马线/转向标志检测开始时间
+    stop_and_turn_done,  # 新增参数：确保STOP_AND_TURN只执行一次
 ):
     """处理元素检测并返回相关标志和计数信息"""
     detected_target_element = False
@@ -183,7 +199,20 @@ def elements_process(
             class_name in ["zebra", "turn_sign"]
             and filtered_scores[i] >= Config.TURN_SIGN_CT
         ):
-            detected_zebra_or_turn = True
+            if stop_and_turn_done:
+                continue
+
+            if zebra_or_turn_detection_start_time is None:
+                zebra_or_turn_detection_start_time = time.time()  # 记录开始时间
+            else:
+                # 计算检测持续时间
+                elapsed_time = time.time() - zebra_or_turn_detection_start_time
+                print(f"检测斑马线/转向标志，检测时间: {elapsed_time:.2f}秒")
+                if elapsed_time >= Config.ZEBRA_OR_TURN_CONFIRMATION_DURATION:
+                    detected_zebra_or_turn = True  # 确认为已检测到
+                    print("检测到斑马线或转向标志，确认完成!")
+        else:
+            zebra_or_turn_detection_start_time = None
 
         # 检查是否检测到锥桶
         if class_name == "cone" and filtered_scores[i] >= Config.CONE_CT:
@@ -196,8 +225,8 @@ def elements_process(
                 last_cone_count_time is None
                 or time.time() - last_cone_count_time >= Config.CONE_DET_COOLING_TIME
             ):
-                if cone_detection_start_time is None:
-                    cone_detection_start_time = time.time()  # 锥桶检测开始时间
+                if cone_detection_start_time is None:  # 锥桶检测开始时间
+                    cone_detection_start_time = time.time()
                 else:
                     elapsed_time = time.time() - cone_detection_start_time
                     if (
@@ -208,6 +237,7 @@ def elements_process(
                             last_cone_count_time = time.time()  # 更新最后一次计数时间
                             cone_detection_start_time = None  # 重置计时器
                             print(f"锥桶检测计数增加！当前锥桶计数: {cone_count}")
+
         else:
             # 如果检测到的锥桶置信度低于 0.9，重置计时器
             cone_detection_start_time = None
@@ -232,6 +262,8 @@ def elements_process(
         cone_count,
         cone_detection_start_time,
         last_cone_count_time,
+        zebra_or_turn_detection_start_time,  # 返回更新后的时间戳
+        stop_and_turn_done,  # 返回任务标志
     )
 
 
@@ -252,6 +284,10 @@ def process_idle(frame, *args, **kwargs):
     )  # 锥桶检测计时器
     last_cone_count_time = kwargs.get("last_cone_count_time", None)  # 上次锥桶计数时间
     avoid_obstacle_done = kwargs.get("avoid_obstacle_done", False)  # 避障任务是否完成
+    zebra_or_turn_detection_start_time = kwargs.get(
+        "zebra_or_turn_detection_start_time", None
+    )
+    stop_and_turn_done = kwargs.get("stop_and_turn_done", False)
 
     # CORE 运行 yolo 进行推理
     results_lane = yolo_processor_lane.infer(frame)
@@ -277,6 +313,8 @@ def process_idle(frame, *args, **kwargs):
         cone_count,
         cone_detection_start_time,
         last_cone_count_time,
+        zebra_or_turn_detection_start_time,  # 返回更新后的时间戳
+        stop_and_turn_done,  # 返回任务标志
     ) = elements_process(
         frame,
         results_elements,
@@ -285,6 +323,8 @@ def process_idle(frame, *args, **kwargs):
         cone_detection_start_time,
         last_cone_count_time,
         avoid_obstacle_done,
+        zebra_or_turn_detection_start_time,
+        stop_and_turn_done,
     )
 
     # 返回处理后的结果
@@ -296,6 +336,8 @@ def process_idle(frame, *args, **kwargs):
         last_cone_count_time,
         detected_zebra_or_turn,
         avoid_obstacle_done,
+        zebra_or_turn_detection_start_time,  # 返回更新后的时间戳
+        stop_and_turn_done,  # 返回任务标志
     )
 
 
@@ -303,18 +345,22 @@ def process_stop_and_turn(frame, *args, **kwargs):
     """处理停车和转向逻辑"""
     # 注意由于并未使用多线程，进入该状态的车将会关闭循迹
     print("♻执行停车和转向任务")
-    # 通过UDP协议发送停车信号 v 1 0
+    # 1. 停车
     odrive_control.motor_velocity(1, 0)
-    time.sleep(9.9)  # 模拟停车
     print("完成停车，执行转向")
-    # 首先回中值状态
+    # 2. 停车后等待车身稳定
+    time.sleep(Config.STABILIZATION_TIME)  # 等待车停稳
+    # 3. 舵机回中值
     directional_control.send_protocol_frame_udp(Config.SERVO_MIDPOINT)
-    # 然后向左打一个小角度
-    directional_control.send_protocol_frame_udp(Config.SERVO_MIDPOINT - 50)
-    # 车辆前进
-    odrive_control.motor_velocity(1, 1)
-    # 车辆前进2s，到达预计的位置
-    time.sleep(2)
+    # 4. 左变道设定的变道角度
+    directional_control.send_protocol_frame_udp(
+        Config.SERVO_MIDPOINT + Config.LANE_CHANGE_ANGLE
+    )
+    # 5. 开始停车
+    time.sleep(Config.PARKING_TIME - Config.STABILIZATION_TIME)
+    # 6. 前进变道距离，使用变道速度
+    odrive_control.motor_velocity(1, Config.LANE_CHANGE_SPEED)
+    time.sleep(Config.LANE_CHANGE_TIME)
 
     return frame
 
@@ -324,31 +370,71 @@ def process_avoid_obstacle(frame, *args, **kwargs):
     print("♻执行避障任务")
 
     # 速度降低准备避障
-    odrive_control.motor_velocity(1, 0.5)
-    odrive_control.motor_velocity(1, 0.5)
+    odrive_control.motor_velocity(1, Config.AVOID_SPEED)
+    odrive_control.motor_velocity(1, Config.AVOID_SPEED)
     # 持续向左打方向之后再持续向右打方向
 
     # 舵机回中值
-    directional_control.send_protocol_frame_udp(Config.SERVO_MIDPOINT)
+    # directional_control.send_protocol_frame_udp(Config.SERVO_MIDPOINT)
+
     # 向左打方向 200 个脉冲
-    for i in range(100):
+    # BUG 存在问题
+    for i in range(50):
         # 发送脉冲，向左打方向
         directional_control.send_protocol_frame_udp(
-            Config.SERVO_MIDPOINT - i * 2
+            pulse_width - i * 2
         )  # 每次发送2个脉冲
+        if i == 49:
+            record_last_pulse = pulse_width - i * 2
         time.sleep(0.02)  # 等待 20 毫秒
 
     # 向右打方向 200 个脉冲
-    for i in range(100):
+    for i in range(50):
         # 发送脉冲，向右打方向
         directional_control.send_protocol_frame_udp(
-            Config.SERVO_MIDPOINT + i * 2
+            # BUG 存在问题
+            record_last_pulse
+            + i * 2
         )  # 每次发送2个脉冲
         time.sleep(0.02)  # 等待 20 毫秒
+    # 向右打方向 200 个脉冲
+    for i in range(50):
+        # 发送脉冲，向左打方向
+        directional_control.send_protocol_frame_udp(
+            pulse_width + i * 2
+        )  # 每次发送2个脉冲
+        if i == 49:
+            record_last_pulse = pulse_width + i * 2
+        time.sleep(0.02)  # 等待 20 毫秒
+    # 向左打方向 200 个脉冲
+    # BUG 存在问题
+    for i in range(50):
+        # 发送脉冲，向左打方向
+        directional_control.send_protocol_frame_udp(
+            record_last_pulse - i * 2
+        )  # 每次发送2个脉冲
+        time.sleep(0.02)  # 等待 20 毫秒
+    
+    
+
     # 恢复行驶速度 # TODO 需要调试速度
     odrive_control.motor_velocity(1, Config.CAR_SPEED)
     print("避障完成")
     return frame
+
+
+def send_pulses(total_pulses):
+    # 计算脉冲的步长，正负脉冲的情况
+    step = 2 if total_pulses > 0 else -2
+    abs_pulses = abs(total_pulses)  # 取脉冲数的绝对值
+
+    for i in range(abs_pulses):
+
+        directional_control.send_protocol_frame_udp(
+            Config.SERVO_MIDPOINT - i * step
+        )  # 每次发送2个脉冲
+        print(i * step)
+        time.sleep(0.02)  # 等待 20 毫秒
 
 
 def main():
@@ -391,6 +477,9 @@ def main():
     last_cone_count_time = None  # 最后一次锥桶计数时间
     stop_and_turn_done = False  # 添加标志，确保只执行一次停车和转向任务
     avoid_obstacle_done = False  # 避障任务是否完成
+    zebra_or_turn_detection_start_time = None
+    cone_to_avoid_timer_start = None
+    zebra_or_turn_timer_start = None
 
     # CORE 等待视频流准备好
     start_time = time.time()
@@ -419,6 +508,8 @@ def main():
                 last_cone_count_time,
                 detected_zebra_or_turn,
                 avoid_obstacle_done,
+                zebra_or_turn_detection_start_time,
+                stop_and_turn_done,
             ) = process_idle(
                 frame,
                 yolo_processor_lane=yolo_processor_lane,
@@ -434,23 +525,46 @@ def main():
                 cone_detection_start_time=cone_detection_start_time,  # 传递计时器
                 last_cone_count_time=last_cone_count_time,  # 传递最后一次计数时间
                 avoid_obstacle_done=avoid_obstacle_done,  # 传递是否完成避障任务的标志
+                zebra_or_turn_detection_start_time=zebra_or_turn_detection_start_time,
+                stop_and_turn_done=stop_and_turn_done,
             )
 
             # 如果检测到斑马线或转向标志且置信度 >= 0.9，切换到 STOP_AND_TURN 状态
             # TODO 需要更新距离判定条件，到达特定的距离阈值才开始停车
             if detected_zebra_or_turn and not stop_and_turn_done:
-                current_state = State.STOP_AND_TURN
-                stop_and_turn_done = True  # 设置为已完成，避免重复执行
-                print("🆗检测到斑马线或转向标志，切换到 STOP_AND_TURN 状态！")
+                if zebra_or_turn_timer_start is None:
+                    # 开始计时
+                    zebra_or_turn_timer_start = current_time
+                    print("检测到斑马线或转向标志，开始计时...")
+                elif (
+                    current_time - zebra_or_turn_timer_start
+                    >= Config.ZEBRA_OR_TURN_IDLE_TIME
+                ):
+                    # 两秒计时完成后，切换到 STOP_AND_TURN 状态
+                    current_state = State.STOP_AND_TURN
+                    stop_and_turn_done = True  # 设置为已完成，避免重复执行
+                    zebra_or_turn_timer_start = None  # 重置计时器
+                    print("计时结束，切换到 STOP_AND_TURN 状态！")
+            else:
+                # 如果计时器未完成或检测条件不再满足，重置计时器
+                zebra_or_turn_timer_start = None
 
             # 如果锥桶计数达到 CONE_TO_AVOID_INDEX，切换到 AVOID_OBSTACLE 状态
-
             if cone_count >= Config.CONE_TO_AVOID_INDEX and not avoid_obstacle_done:
-                current_state = State.AVOID_OBSTACLE
-                avoid_obstacle_done = True  # 设置为已完成，避免重复执行
-                print(
-                    f"🆗锥桶计数达到 {Config.CONE_TO_AVOID_INDEX}，切换到 AVOID_OBSTACLE 状态！"
-                )
+                if cone_to_avoid_timer_start is None:
+                    # 开始计时
+                    cone_to_avoid_timer_start = current_time
+                    print("检测到第三个锥桶，开始计时...")
+                elif current_time - cone_to_avoid_timer_start >= Config.CONE_IDLE_TIME:
+                    # 两秒计时完成后，切换到避障状态
+                    current_state = State.AVOID_OBSTACLE
+                    avoid_obstacle_done = True  # 设置为已完成，避免重复执行
+                    print(
+                        f"锥桶计数达到 {Config.CONE_TO_AVOID_INDEX}，切换到 AVOID_OBSTACLE 状态！"
+                    )
+            else:
+                # 如果计时器未完成，保持在 IDLE 状态
+                cone_to_avoid_timer_start = None
 
         elif current_state == State.AVOID_OBSTACLE:
             # 执行避障任务
@@ -466,6 +580,30 @@ def main():
         fps = 1 / (current_time - prev_time) if current_time != prev_time else 0
         prev_time = current_time
         fps_list.append(fps)
+
+        # 显示计时器
+        if cone_to_avoid_timer_start is not None:
+            remaining_time =  (current_time - cone_to_avoid_timer_start)
+            cv2.putText(
+                frame,
+                f"Obstacle Timer: {remaining_time:.2f}s",
+                (10, 150),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 255, 0),
+                2,
+            )
+        if zebra_or_turn_timer_start is not None:
+            remaining_time = (current_time - zebra_or_turn_timer_start)
+            cv2.putText(
+                frame,
+                f"Zebra/Turn Timer: {remaining_time:.2f}s",
+                (10, 190),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 255, 255),
+                2,
+            )
 
         # 显示帧率
         cv2.putText(

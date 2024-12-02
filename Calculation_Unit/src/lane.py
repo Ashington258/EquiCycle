@@ -1,4 +1,3 @@
-from enum import Enum
 import time
 import numpy as np
 import cv2
@@ -12,17 +11,10 @@ from skimage.morphology import skeletonize
 import torch
 
 
-class State(Enum):
-    IDLE = 1  # 车道检测和元素检测
-    STOP_AND_TURN = 2  # 停车和转向
-    AVOID_OBSTACLE = 3  # 避障
-
-
 def process_frame(
     frame,
     results,
-    # UPDATE 更新标签名称
-    lane_class_name,
+    class_names,
     horizontal_line_y,
     target_x,
     R,
@@ -52,7 +44,7 @@ def process_frame(
         x1, y1, x2, y2 = map(int, box)
         class_id = filtered_classes[i]
         score = filtered_scores[i]
-        label = f"{lane_class_name[class_id]}: {score:.2f}"
+        label = f"{class_names[class_id]}: {score:.2f}"
 
         # 绘制边界框和标签
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -151,100 +143,17 @@ def process_frame(
     return frame
 
 
-def process_idle(frame, *args, **kwargs):
-    """处理车道检测和元素检测逻辑"""
-    yolo_processor_lane = kwargs.get("yolo_processor_lane")
-    yolo_processor_elements = kwargs.get("yolo_processor_elements")
-    lane_class_name = kwargs.get("lane_class_name")
-    elements_class_name = kwargs.get("elements_class_name")
-    horizontal_line_y = kwargs.get("horizontal_line_y")
-    target_x = kwargs.get("target_x")
-    R = kwargs.get("R")
-    servo_midpoint = kwargs.get("servo_midpoint")
-    directional_control = kwargs.get("directional_control")
-
-    results_lane = yolo_processor_lane.infer(frame)
-    results_elements = yolo_processor_elements.infer(frame)
-
-    # 处理车道检测结果
-    frame = process_frame(
-        frame,
-        results_lane,
-        lane_class_name,
-        horizontal_line_y,
-        target_x,
-        R,
-        servo_midpoint,
-        directional_control,
-    )
-
-    # 处理目标检测结果
-    filtered_boxes, filtered_scores, filtered_masks, filtered_classes = apply_nms(
-        results_elements
-    )
-    for i, box in enumerate(filtered_boxes):
-        x1, y1, x2, y2 = map(int, box)
-        elements_class_id = filtered_classes[i]
-        label = f"{elements_class_name[elements_class_id]}: {filtered_scores[i]:.2f}"
-
-        # 绘制目标框
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-        cv2.putText(
-            frame,
-            label,
-            (x1, y1 - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (255, 255, 255),
-            2,
-            cv2.LINE_AA,
-        )
-    return frame
-
-
-def process_stop_and_turn(frame, *args, **kwargs):
-    """处理停车和转向逻辑"""
-    print("执行停车和转向任务")
-    # 假设我们检测到停车线，模拟停车和转向
-    time.sleep(2)  # 模拟停车
-    print("完成停车，执行转向")
-    return frame
-
-
-def process_avoid_obstacle(frame, *args, **kwargs):
-    """处理避障逻辑"""
-    print("执行避障任务")
-    # 模拟避障任务逻辑
-    time.sleep(1)
-    print("避障完成")
-    return frame
-
-
 def main():
     # 初始化模块
     device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # 第一个 YOLO 模型（车道检测）
-    yolo_processor_lane = YOLOProcessor(
+    yolo_processor = YOLOProcessor(
         Config.LANE_MODEL, Config.CONF_THRESH, Config.IMG_SIZE, device
     )
-
-    # 第二个 YOLO 模型（目标检测）
-    yolo_processor_elements = YOLOProcessor(
-        Config.ELEMENTS_MODEL,
-        Config.CONF_THRESH,
-        Config.IMG_SIZE,
-        device,
-    )
-
     video_processor = VideoProcessor(Config.INPUT_SOURCE)
     directional_control = DirectionalControl()
 
     # 配置参数
-    # update 修改标签为labe
-
-    lane_class_name = Config.LANE_CLASS_NAME
-    elements_class_name = Config.ELEMENTS_CLASS_NAME
+    class_names = Config.LANE_CLASS_NAME
     horizontal_line_y = Config.HORIZONTAL_LINE_Y
     target_x = Config.TARGET_X
     R = Config.R
@@ -253,45 +162,35 @@ def main():
     prev_time = time.time()
     fps_list = []
 
-    # 状态初始化
-    current_state = State.IDLE
+    # 等待视频流准备好
+    start_time = time.time()
+    while True:
+        ret, frame = video_processor.read_frame()
+        if ret:
+            break
+        if time.time() - start_time > 10:  # 如果 10 秒后仍未获取到帧，退出
+            print("无法连接到视频流")
+            return
 
     while True:
         ret, frame = video_processor.read_frame()
         if not ret:
             break
 
-        if current_state == State.IDLE:
-            # 执行车道检测和元素检测
-            frame = process_idle(
-                frame,
-                yolo_processor_lane=yolo_processor_lane,
-                yolo_processor_elements=yolo_processor_elements,
-                lane_class_name=lane_class_name,
-                elements_class_name=elements_class_name,
-                horizontal_line_y=horizontal_line_y,
-                target_x=target_x,
-                R=R,
-                servo_midpoint=servo_midpoint,
-                directional_control=directional_control,
-            )
-            # 假设触发条件为检测到停车线
-            if detect_stop_line(frame):
-                current_state = State.STOP_AND_TURN
-            elif detect_obstacle(frame):
-                current_state = State.AVOID_OBSTACLE
+        # YOLO 推理
+        results = yolo_processor.infer(frame)
 
-        elif current_state == State.STOP_AND_TURN:
-            # 执行停车和转向任务
-            frame = process_stop_and_turn(frame)
-            # 返回到 IDLE 状态
-            current_state = State.IDLE
-
-        elif current_state == State.AVOID_OBSTACLE:
-            # 执行避障任务
-            frame = process_avoid_obstacle(frame)
-            # 返回到 IDLE 状态
-            current_state = State.IDLE
+        # 处理每一帧
+        frame = process_frame(
+            frame,
+            results,
+            class_names,
+            horizontal_line_y,
+            target_x,
+            R,
+            servo_midpoint,
+            directional_control,
+        )
 
         # 计算帧率
         current_time = time.time()
@@ -311,7 +210,7 @@ def main():
         )
 
         # 显示结果帧
-        cv2.imshow("State Machine with YOLO", frame)
+        cv2.imshow("YOLOv8 Instance Segmentation with Centerline", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
@@ -330,18 +229,6 @@ def main():
 
     # 释放资源
     video_processor.release()
-
-
-def detect_stop_line(frame):
-    """检测停车线的占位函数"""
-    # 替换为真实停车线检测逻辑
-    return False
-
-
-def detect_obstacle(frame):
-    """检测障碍物的占位函数"""
-    # 替换为真实障碍物检测逻辑
-    return False
 
 
 if __name__ == "__main__":
