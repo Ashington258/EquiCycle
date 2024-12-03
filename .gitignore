@@ -1,0 +1,79 @@
+#忽略调试生成的一些中间文件
+# Ignore other generated files
+build.ninja
+
+# Ignore project-specific files
+.mxproject
+
+# Ignore binaries and other compiled outputs
+*.o
+*.a
+*.out
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Ignore log and temporary files
+*.log
+*.tmp
+*.bak
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Specific to STM32 projects
+# *.ioc
+*.ld
+*.bin
+*.hex
+*.elf
+*.map
+*.srec
+
+# Ignore core dumps and crash reports
+core.*
+*.core
+
+# Ignore IDE project files
+*.project
+*.cproject
+.idea/
+*.iml
+
+# 忽略 Control_Unit\Software
+
+.vscode
+build
+
+# Ignore CMake related files
+cmake/
+CMakeFiles/
+CMakeCache.txt
+CMakeLists.txt
+CMakeLists.txt.user
+CMakePresets.json
+cmake_install.cmake
+compile_commands.json
+
+# 忽略office临时文件
+~$*
+
+# 忽略mp4文件
+*.mp4
+
+# # 忽略python中间文件
+__pycache__
+
+# 忽略dataset文件夹
+dataset
+dataset
+_.md
+
+# 忽略 MP4文件
+*.mp4
+
+# 忽略 jpg 文件
+
+*.jpg
