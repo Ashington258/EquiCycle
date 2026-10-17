@@ -4,5 +4,10 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"python.analysis.extraPaths": [
+			"C:\\Users\\keywo\\.kendryte\\k230_canmv_stubs\\b3211026add55b02dad803f6ec7b19e3fb978acf"
+		],
+		"python.analysis.stubPath": "C:\\Users\\keywo\\.kendryte\\k230_canmv_pylance\\54e88dc403da2e0b\\typings"
+	}
 }

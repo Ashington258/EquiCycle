@@ -1,0 +1,21 @@
+{
+    "ch100": {
+        "port": "COM26",
+        "baudrate": 460800,
+        "zmq_port": 5555
+    },
+    "odrive": {
+        "port": "COM32",
+        "baudrate": 460800,
+        "zmq_port": 5556,
+        "current_limit_a": 90.0
+    },
+    "monitoring": {
+        "zmq_port": 5555,
+        "topic": "imu_data"
+    },
+    "SpeedFromVision_Listener": {
+        "zmq_port": 12345
+    }
+    
+}
