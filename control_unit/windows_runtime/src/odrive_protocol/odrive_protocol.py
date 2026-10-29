@@ -1,20 +1,54 @@
+import math
+import threading
+
 import serial
 import serial.tools.list_ports
-import threading
 
 
 class ODriveAsciiProtocol:
     def __init__(self, port: str, baudrate: int = 460800):
-        self.serial = serial.Serial(port, baudrate, timeout=1)
+        self.serial = serial.Serial(
+            port,
+            baudrate,
+            timeout=0.25,
+            write_timeout=1.0,
+        )
         self.serial_lock = threading.RLock()
+
+    def _write_locked(self, command: str):
+        self.serial.write(f"{command}\n".encode("ascii"))
+
+    def _query(self, command: str, validator=None, attempts: int = 2):
+        last_error = None
+        with self.serial_lock:
+            for _attempt in range(attempts):
+                try:
+                    self.serial.reset_input_buffer()
+                    self._write_locked(command)
+                    response = self.serial.readline().decode("ascii").strip()
+                    if not response:
+                        raise TimeoutError(f"ODrive 查询无响应: {command}")
+                    if validator is not None:
+                        validator(response)
+                    return response
+                except (
+                    serial.SerialTimeoutException,
+                    TimeoutError,
+                    UnicodeDecodeError,
+                    ValueError,
+                ) as exc:
+                    last_error = exc
+            raise TimeoutError(
+                f"ODrive 查询连续 {attempts} 次失败: {command}; {last_error}"
+            ) from last_error
 
     def send_command(self, command: str):
         with self.serial_lock:
-            self.serial.write(f"{command}\n".encode())
+            self._write_locked(command)
 
     def read_response(self):
         with self.serial_lock:
-            return self.serial.readline().decode().strip()
+            return self.serial.readline().decode("ascii").strip()
 
     def motor_trajectory(self, motor: int, destination: float):
         command = f"t {motor} {destination}"
@@ -45,7 +79,7 @@ class ODriveAsciiProtocol:
         self.send_command(command)
 
     def motor_velocity(self, motor: int, velocity: float, torque_ff: float = 0.0):
-        command = f"v {motor} {velocity}"
+        command = f"v {motor} {velocity} {torque_ff}"
         self.send_command(command)
 
     def motor_current(self, motor: int, torque: float):
@@ -53,18 +87,21 @@ class ODriveAsciiProtocol:
         self.send_command(command)
 
     def request_feedback(self, motor: int):
-        with self.serial_lock:
-            self.send_command(f"f {motor}")
-            return self.read_response()
+        def validate_feedback(response):
+            values = response.split()
+            if len(values) != 2 or not all(
+                math.isfinite(float(value)) for value in values
+            ):
+                raise ValueError(f"无效反馈: {response!r}")
+
+        return self._query(f"f {motor}", validator=validate_feedback)
 
     def update_watchdog(self, motor: int):
         command = f"u {motor}"
         self.send_command(command)
 
     def read_parameter(self, property_name: str):
-        with self.serial_lock:
-            self.send_command(f"r {property_name}")
-            return self.read_response()
+        return self._query(f"r {property_name}")
 
     def write_parameter(self, property_name: str, value: float):
         command = f"w {property_name} {value}"
@@ -100,6 +137,7 @@ class ODriveAsciiProtocol:
     def close(self):
         with self.serial_lock:
             self.serial.close()
+            return not self.serial.is_open
 
     @staticmethod
     def find_odrive():
