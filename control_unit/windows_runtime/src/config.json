@@ -5,10 +5,9 @@
         "zmq_port": 5555
     },
     "odrive": {
-        "port": "COM32",
+        "port": "COM33",
         "baudrate": 460800,
-        "zmq_port": 5556,
-        "current_limit_a": 90.0
+        "zmq_port": 5556
     },
     "monitoring": {
         "zmq_port": 5555,

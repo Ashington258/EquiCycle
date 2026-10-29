@@ -12,9 +12,11 @@ import zmq
 
 from balance_control.balance_control import (
     BALANCE_MODE_ACTIVE,
+    MOTOR_SPEED_SLEW_RATE,
     PITCH_STOP_ANGLE,
-    control_layer,
+    adjust_motor_speed,
     get_pid_parameters,
+    update_control_data,
     get_balance_status,
     get_pitch_status,
     get_tuning_snapshot,
@@ -29,14 +31,13 @@ APP_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = APP_DIR.parent
 CONFIG_PATH = APP_DIR / "config.json"
 LOG_DIR = RUNTIME_DIR / "logs"
-TUNING_LOG_QUEUE_SIZE = 4096
-TUNING_LOG_BATCH_SIZE = 50
-TUNING_LOG_FLUSH_INTERVAL = 0.5
-TUNING_LOG_STOP = object()
 TUNING_LOG_FIELDS = (
     "host_time_iso",
     "elapsed_s",
+    "pitch_raw_deg",
     "pitch_deg",
+    "gyro_x_raw_deg_s",
+    "gyro_x_filtered_deg_s",
     "gyro_x_deg_s",
     "motor_speed_rev_s",
     "velocity_loop_output",
@@ -68,8 +69,64 @@ ch100_config = config["ch100"]
 odrive_config = config["odrive"]
 monitoring_config = config["monitoring"]
 stop_event = threading.Event()
-data_queue = queue.Queue()
-tuning_log_queue = queue.Queue(maxsize=TUNING_LOG_QUEUE_SIZE)
+control_data_queue = queue.Queue()
+CONTROL_PERIOD = 0.01
+ODRIVE_FEEDBACK_PERIOD = 0.01
+ODRIVE_TELEMETRY_PERIOD = 0.1
+ODRIVE_DIAGNOSTIC_PERIOD = 0.5
+ODRIVE_CURRENT_LIMIT_A = 30.0
+ODRIVE_TORQUE_LIMIT_NM = 1.0
+ODRIVE_VELOCITY_LIMIT_REV_S = 15.0
+ODRIVE_VELOCITY_RAMP_RATE_REV_S2 = 60.0
+
+ODRIVE_ERROR_NAMES = {
+    "axis0.error": {
+        0x00000001: "INVALID_STATE",
+        0x00000040: "MOTOR_FAILED",
+        0x00000080: "SENSORLESS_ESTIMATOR_FAILED",
+        0x00000100: "ENCODER_FAILED",
+        0x00000200: "CONTROLLER_FAILED",
+        0x00000800: "WATCHDOG_TIMER_EXPIRED",
+        0x00004000: "ESTOP_REQUESTED",
+        0x00040000: "OVER_TEMP",
+    },
+    "axis0.motor.error": {
+        0x00000001: "PHASE_RESISTANCE_OUT_OF_RANGE",
+        0x00000002: "PHASE_INDUCTANCE_OUT_OF_RANGE",
+        0x00000008: "DRV_FAULT",
+        0x00000010: "CONTROL_DEADLINE_MISSED",
+        0x00000080: "MODULATION_MAGNITUDE",
+        0x00000400: "CURRENT_SENSE_SATURATION",
+        0x00001000: "CURRENT_LIMIT_VIOLATION",
+        0x00010000: "MODULATION_IS_NAN",
+        0x00020000: "MOTOR_THERMISTOR_OVER_TEMP",
+        0x00040000: "FET_THERMISTOR_OVER_TEMP",
+        0x00100000: "CURRENT_MEASUREMENT_UNAVAILABLE",
+        0x00200000: "CONTROLLER_FAILED",
+        0x00400000: "I_BUS_OUT_OF_RANGE",
+        0x00800000: "BRAKE_RESISTOR_DISARMED",
+        0x01000000: "SYSTEM_LEVEL",
+        0x10000000: "UNKNOWN_TORQUE",
+        0x20000000: "UNKNOWN_CURRENT_COMMAND",
+        0x40000000: "UNKNOWN_CURRENT_MEASUREMENT",
+        0x80000000: "UNKNOWN_VBUS_VOLTAGE",
+    },
+    "axis0.controller.error": {
+        0x00000001: "OVERSPEED",
+        0x00000002: "INVALID_INPUT_MODE",
+        0x00000004: "UNSTABLE_GAIN",
+        0x00000020: "INVALID_ESTIMATE",
+        0x00000080: "SPINOUT_DETECTED",
+    },
+    "axis0.encoder.error": {
+        0x00000001: "UNSTABLE_GAIN",
+        0x00000002: "CPR_POLEPAIRS_MISMATCH",
+        0x00000004: "NO_RESPONSE",
+        0x00000010: "ILLEGAL_HALL_STATE",
+        0x00000040: "ABS_SPI_TIMEOUT",
+        0x00000080: "ABS_SPI_COM_FAIL",
+    },
+}
 
 
 def create_ch100_publisher():
@@ -102,7 +159,7 @@ def ch100_thread_function():
                     [topic, json.dumps(frame).encode("utf-8")]
                 )
                 frame["device"] = "ch100"
-                data_queue.put(frame)
+                control_data_queue.put(frame)
     except Exception:
         logging.exception("CH100 线程错误")
     finally:
@@ -116,13 +173,19 @@ def ch100_thread_function():
 
 def odrive_thread_function(odrive_instance):
     diagnostics = {
+        "motor_current_a": 0.0,
+        "iq_setpoint_a": 0.0,
         "odrive_input_vel_rev_s": 0.0,
         "odrive_state": 0,
         "odrive_axis_error": 0,
         "odrive_motor_error": 0,
         "odrive_controller_error": 0,
     }
+    next_telemetry_read = 0.0
     next_diagnostic_read = 0.0
+    next_feedback_at = time.monotonic()
+    read_error_active = False
+    suppressed_read_errors = 0
     try:
         while not stop_event.is_set():
             try:
@@ -131,17 +194,23 @@ def odrive_thread_function(odrive_instance):
                         odrive_instance.read_parameter("axis0.motor.config.current_lim")
                     )
                 feedback = odrive_instance.request_feedback(0)
-                motor_current = float(
-                    odrive_instance.read_parameter(
-                        "axis0.motor.current_control.Iq_measured"
-                    )
-                )
-                iq_setpoint = float(
-                    odrive_instance.read_parameter(
-                        "axis0.motor.current_control.Iq_setpoint"
-                    )
-                )
                 now = time.monotonic()
+                if now >= next_telemetry_read:
+                    diagnostics.update(
+                        {
+                            "motor_current_a": float(
+                                odrive_instance.read_parameter(
+                                    "axis0.motor.current_control.Iq_measured"
+                                )
+                            ),
+                            "iq_setpoint_a": float(
+                                odrive_instance.read_parameter(
+                                    "axis0.motor.current_control.Iq_setpoint"
+                                )
+                            ),
+                        }
+                    )
+                    next_telemetry_read = now + ODRIVE_TELEMETRY_PERIOD
                 if now >= next_diagnostic_read:
                     diagnostics.update(
                         {
@@ -164,19 +233,32 @@ def odrive_thread_function(odrive_instance):
                             ),
                         }
                     )
-                    next_diagnostic_read = now + 0.25
-                data_queue.put(
+                    next_diagnostic_read = now + ODRIVE_DIAGNOSTIC_PERIOD
+                control_data_queue.put(
                     {
                         "device": "odrive",
                         "feedback": feedback,
-                        "motor_current_a": motor_current,
-                        "iq_setpoint_a": iq_setpoint,
                         **diagnostics,
                     }
                 )
+                if read_error_active:
+                    logging.warning(
+                        "ODrive 反馈读取已恢复；本次连续失败 %d 次",
+                        suppressed_read_errors + 1,
+                    )
+                    read_error_active = False
+                    suppressed_read_errors = 0
             except Exception:
-                logging.exception("ODrive 反馈或限制诊断读取失败")
-            stop_event.wait(0.02)
+                if not read_error_active:
+                    logging.exception("ODrive 反馈或限制诊断读取失败；等待恢复")
+                    read_error_active = True
+                else:
+                    suppressed_read_errors += 1
+            next_feedback_at += ODRIVE_FEEDBACK_PERIOD
+            now = time.monotonic()
+            if next_feedback_at <= now:
+                next_feedback_at = now + ODRIVE_FEEDBACK_PERIOD
+            stop_event.wait(max(0.0, next_feedback_at - now))
     finally:
         logging.info("ODrive 反馈线程已停止")
 
@@ -189,64 +271,6 @@ def create_tuning_log():
     writer.writeheader()
     log_file.flush()
     return path, log_file, writer
-
-
-def tuning_log_thread_function(log_queue=None):
-    if log_queue is None:
-        log_queue = tuning_log_queue
-    log_path, log_file, tuning_writer = create_tuning_log()
-    batch = []
-    last_flush = time.monotonic()
-    logging.info("调参数据开始抓取: %s", log_path)
-    try:
-        while True:
-            timeout = max(
-                0.0,
-                TUNING_LOG_FLUSH_INTERVAL - (time.monotonic() - last_flush),
-            )
-            try:
-                row = log_queue.get(timeout=timeout)
-            except queue.Empty:
-                row = TUNING_LOG_STOP
-
-            if row is TUNING_LOG_STOP:
-                if batch:
-                    tuning_writer.writerows(batch)
-                    batch.clear()
-                log_file.flush()
-                last_flush = time.monotonic()
-                if stop_event.is_set() and log_queue.empty():
-                    break
-            else:
-                batch.append(row)
-
-            if batch and (
-                len(batch) >= TUNING_LOG_BATCH_SIZE
-                or time.monotonic() - last_flush >= TUNING_LOG_FLUSH_INTERVAL
-            ):
-                tuning_writer.writerows(batch)
-                batch.clear()
-                log_file.flush()
-                last_flush = time.monotonic()
-    except Exception:
-        logging.exception("调参日志线程错误")
-    finally:
-        if batch:
-            tuning_writer.writerows(batch)
-        log_file.flush()
-        log_file.close()
-        logging.info("调参数据已保存: %s", log_path)
-        logging.info("调参日志线程已停止")
-
-
-def enqueue_tuning_log(row, log_queue=None):
-    if log_queue is None:
-        log_queue = tuning_log_queue
-    try:
-        log_queue.put_nowait(row)
-        return True
-    except queue.Full:
-        return False
 
 
 def build_tuning_log_row(data, started_at):
@@ -272,62 +296,100 @@ def build_tuning_log_row(data, started_at):
     }
 
 
+def record_tuning_log_row(tuning_writer, log_file, data, started_at):
+    try:
+        tuning_writer.writerow(build_tuning_log_row(data, started_at))
+        log_file.flush()
+        return True
+    except Exception:
+        logging.exception("调参 CSV 写入失败，已停止本次调参记录")
+        return False
+
+
 def control_thread_function(odrive_instance):
     next_status_log = 0.0
-    dropped_log_rows = 0
-    started_at = time.monotonic()
+    next_control_at = time.monotonic()
+    latest_odrive_data = None
+    odrive_data_updated = False
+    started_at = next_control_at
+    log_path, log_file, tuning_writer = create_tuning_log()
+    logging.info(
+        "调参数据开始抓取: %s；平衡控制频率=%.0f Hz",
+        log_path,
+        1.0 / CONTROL_PERIOD,
+    )
     try:
         while not stop_event.is_set():
+            timeout = max(0.0, next_control_at - time.monotonic())
             try:
-                data = data_queue.get(timeout=0.2)
+                data = control_data_queue.get(timeout=timeout)
+                update_control_data(data)
+                if data.get("device") == "odrive":
+                    latest_odrive_data = data
+                    odrive_data_updated = True
             except queue.Empty:
+                pass
+            except Exception:
+                logging.exception("控制输入处理失败")
+
+            now = time.monotonic()
+            if now < next_control_at:
                 continue
+
             try:
-                target_speed = control_layer(data, odrive_instance)
-                if data.get("device") == "odrive" and target_speed is not None:
-                    if not enqueue_tuning_log(build_tuning_log_row(data, started_at)):
-                        dropped_log_rows += 1
-                    feedback_values = data["feedback"].split()
-                    actual_speed = float(feedback_values[1])
-                    now = time.monotonic()
-                    if now >= next_status_log:
-                        if dropped_log_rows:
-                            logging.warning(
-                                "调参日志队列已满，累计丢弃 %d 行；控制未被阻塞",
-                                dropped_log_rows,
-                            )
-                        pitch, pitch_is_fresh = get_pitch_status()
-                        mode, setpoint = get_balance_status()
-                        status = (
-                            "stale"
-                            if not pitch_is_fresh
-                            else (
-                                "tilt-stop"
-                                if abs(pitch - setpoint) > PITCH_STOP_ANGLE
-                                else mode
-                            )
+                target_speed = adjust_motor_speed(odrive_instance)
+                if (
+                    odrive_data_updated
+                    and latest_odrive_data is not None
+                    and tuning_writer is not None
+                    and not record_tuning_log_row(
+                        tuning_writer, log_file, latest_odrive_data, started_at
+                    )
+                ):
+                    tuning_writer = None
+                odrive_data_updated = False
+
+                if latest_odrive_data is not None and now >= next_status_log:
+                    actual_speed = float(latest_odrive_data["feedback"].split()[1])
+                    pitch, pitch_is_fresh = get_pitch_status()
+                    mode, setpoint = get_balance_status()
+                    status = (
+                        "stale"
+                        if not pitch_is_fresh
+                        else (
+                            "tilt-stop"
+                            if abs(pitch - setpoint) > PITCH_STOP_ANGLE
+                            else mode
                         )
-                        logging.info(
-                            "pitch=%+.3f deg | setpoint=%+.2f deg | "
-                            "target=%+.3f rev/s (%+.1f RPM) | "
-                            "actual=%+.3f rev/s (%+.1f RPM) | %s",
-                            pitch,
-                            setpoint,
-                            target_speed,
-                            target_speed * 60,
-                            actual_speed,
-                            actual_speed * 60,
-                            status,
-                        )
-                        next_status_log = now + 1.0
+                    )
+                    logging.info(
+                        "pitch=%+.3f deg | setpoint=%+.2f deg | "
+                        "target=%+.3f rev/s (%+.1f RPM) | "
+                        "actual=%+.3f rev/s (%+.1f RPM) | %s",
+                        pitch,
+                        setpoint,
+                        target_speed,
+                        target_speed * 60,
+                        actual_speed,
+                        actual_speed * 60,
+                        status,
+                    )
+                    next_status_log = now + 1.0
             except Exception:
                 logging.exception("控制逻辑处理失败")
                 try:
                     odrive_instance.motor_velocity(0, 0, 0)
                 except Exception:
                     logging.exception("控制出错后停止 ODrive 轴 0 失败")
+
+            next_control_at += CONTROL_PERIOD
+            if next_control_at <= now:
+                next_control_at = now + CONTROL_PERIOD
     finally:
-        logging.info("控制线程已停止；调参日志累计丢弃 %d 行", dropped_log_rows)
+        log_file.flush()
+        log_file.close()
+        logging.info("调参数据已保存: %s", log_path)
+        logging.info("控制线程已停止")
 
 
 def read_odrive_int(odrive_instance, property_name):
@@ -346,7 +408,41 @@ def read_axis0_errors(odrive_instance):
         "axis0.encoder.error": read_odrive_int(
             odrive_instance, "axis0.encoder.error"
         ),
+        "axis0.controller.error": read_odrive_int(
+            odrive_instance, "axis0.controller.error"
+        ),
     }
+
+
+def decode_odrive_error(property_name, value):
+    names = []
+    known_bits = 0
+    for bit, name in ODRIVE_ERROR_NAMES.get(property_name, {}).items():
+        known_bits |= bit
+        if value & bit:
+            names.append(name)
+    unknown_bits = value & ~known_bits
+    if unknown_bits:
+        names.append(f"UNKNOWN_BITS_0x{unknown_bits:X}")
+    return "|".join(names) if names else "NONE"
+
+
+def read_axis0_fault_snapshot(odrive_instance):
+    properties = (
+        "axis0.current_state",
+        "vbus_voltage",
+        "axis0.motor.config.current_lim",
+        "axis0.motor.config.current_lim_margin",
+        "axis0.motor.current_control.Iq_setpoint",
+        "axis0.motor.current_control.Iq_measured",
+    )
+    snapshot = {}
+    for property_name in properties:
+        try:
+            snapshot[property_name] = odrive_instance.read_parameter(property_name)
+        except Exception as exc:
+            snapshot[property_name] = f"读取失败({type(exc).__name__}: {exc})"
+    return snapshot
 
 
 def check_axis0_errors(odrive_instance):
@@ -356,12 +452,30 @@ def check_axis0_errors(odrive_instance):
         if value
     }
     if active_errors:
+        error_details = ", ".join(
+            f"{name}={value} (0x{value:X}: {decode_odrive_error(name, value)})"
+            for name, value in active_errors.items()
+        )
         try:
             system_error = read_odrive_int(odrive_instance, "error")
             system_diagnostic = f"ODrive error={system_error} (0x{system_error:X})"
         except Exception as exc:
             system_diagnostic = f"ODrive 顶层 error 读取失败：{exc}"
-        raise RuntimeError(f"AXIS0 存在错误：{active_errors}；{system_diagnostic}")
+        snapshot = read_axis0_fault_snapshot(odrive_instance)
+        snapshot_details = ", ".join(
+            f"{name}={value}" for name, value in snapshot.items()
+        )
+        current_limit_guidance = ""
+        if active_errors.get("axis0.motor.error", 0) & 0x00001000:
+            current_limit_guidance = (
+                " CURRENT_LIMIT_VIOLATION 应检查母线压降、相线/电机参数、"
+                "current_lim 与 current_lim_margin，不能仅通过提高电流限制处理。"
+            )
+        raise RuntimeError(
+            f"AXIS0 存在保护故障：{error_details}；{system_diagnostic}；"
+            f"故障快照：{snapshot_details}。程序未清错、未进入闭环。"
+            f"{current_limit_guidance}"
+        )
 
 
 def clear_axis0_errors_while_idle(odrive_instance):
@@ -392,22 +506,40 @@ def enter_axis0_idle_and_clear_errors(odrive_instance):
     clear_axis0_errors_while_idle(odrive_instance)
 
 
-def configure_axis0_current_limit(odrive_instance):
-    target_limit = float(odrive_config["current_limit_a"])
-    if not math.isfinite(target_limit) or target_limit <= 0:
-        raise ValueError(f"ODrive 电流限制必须为正有限值，收到 {target_limit!r}")
-    odrive_instance.write_parameter("axis0.motor.config.current_lim", target_limit)
-    actual_limit = float(
-        odrive_instance.read_parameter("axis0.motor.config.current_lim")
+def configure_axis0_safety_limits(odrive_instance):
+    torque_constant = float(
+        odrive_instance.read_parameter("axis0.motor.config.torque_constant")
     )
-    if not math.isfinite(actual_limit) or not math.isclose(
-        actual_limit, target_limit, rel_tol=0.0, abs_tol=0.01
-    ):
-        raise RuntimeError(
-            f"ODrive 电流限制写入验证失败：目标={target_limit:.2f} A，"
-            f"回读={actual_limit:.2f} A"
-        )
-    logging.info("ODrive AXIS0 电流限制已设置为 %.2f A", actual_limit)
+    if not math.isfinite(torque_constant) or torque_constant <= 0:
+        raise RuntimeError(f"ODrive 转矩常数无效：{torque_constant!r}")
+    torque_limit = ODRIVE_TORQUE_LIMIT_NM
+    limits = (
+        ("axis0.motor.config.current_lim", ODRIVE_CURRENT_LIMIT_A, "电流", "A"),
+        ("axis0.motor.config.torque_lim", torque_limit, "扭矩", "Nm"),
+        (
+            "axis0.controller.config.vel_limit",
+            ODRIVE_VELOCITY_LIMIT_REV_S,
+            "速度",
+            "rev/s",
+        ),
+    )
+    for parameter, target, label, unit in limits:
+        odrive_instance.write_parameter(parameter, target)
+        actual = float(odrive_instance.read_parameter(parameter))
+        if not math.isfinite(actual) or not math.isclose(
+            actual, target, rel_tol=0.0, abs_tol=0.01
+        ):
+            raise RuntimeError(
+                f"ODrive {label}限制写入验证失败：目标={target:.2f} {unit}，"
+                f"回读={actual:.2f} {unit}"
+            )
+    logging.info(
+        "ODrive AXIS0 安全限制已验证：电流=%.1f A，扭矩=%.2f Nm（Kt=%.4f Nm/A），速度=%.1f rev/s",
+        ODRIVE_CURRENT_LIMIT_A,
+        torque_limit,
+        torque_constant,
+        ODRIVE_VELOCITY_LIMIT_REV_S,
+    )
 
 
 def prepare_axis0_closed_loop(odrive_instance):
@@ -418,9 +550,27 @@ def prepare_axis0_closed_loop(odrive_instance):
         raise RuntimeError("AXIS0 编码器尚未就绪")
 
     odrive_instance.motor_velocity(0, 0, 0)
-    configure_axis0_current_limit(odrive_instance)
+    configure_axis0_safety_limits(odrive_instance)
     odrive_instance.write_parameter(
-        "axis0.controller.config.input_mode", 1
+        "axis0.controller.config.vel_ramp_rate",
+        ODRIVE_VELOCITY_RAMP_RATE_REV_S2,
+    )
+    ramp_rate = float(
+        odrive_instance.read_parameter("axis0.controller.config.vel_ramp_rate")
+    )
+    if not math.isfinite(ramp_rate) or not math.isclose(
+        ramp_rate,
+        ODRIVE_VELOCITY_RAMP_RATE_REV_S2,
+        rel_tol=0.0,
+        abs_tol=0.01,
+    ):
+        raise RuntimeError(
+            "ODrive 速度斜坡写入验证失败："
+            f"目标={ODRIVE_VELOCITY_RAMP_RATE_REV_S2:.2f} rev/s²，"
+            f"回读={ramp_rate:.2f} rev/s²"
+        )
+    odrive_instance.write_parameter(
+        "axis0.controller.config.input_mode", 2
     )
     odrive_instance.write_parameter(
         "axis0.controller.config.control_mode", 2
@@ -539,30 +689,31 @@ def main():
 
     log_pid_parameters()
     try:
-        self_check("ch100", "odrive", config_path=CONFIG_PATH)
+        self_check("ch100", config_path=CONFIG_PATH)
     except Exception:
-        logging.exception("启动前串口自检失败")
+        logging.exception("启动前 CH100 串口自检失败")
         return
 
     if input("准备好后输入 ARM 启动；其他输入退出: ").strip() != "ARM":
         print("已取消启动。")
         return
 
-    odrive_instance = ODriveAsciiProtocol(
-        port=odrive_config["port"],
-        baudrate=odrive_config["baudrate"],
-    )
+    try:
+        odrive_instance = ODriveAsciiProtocol(
+            port=odrive_config["port"],
+            baudrate=odrive_config["baudrate"],
+        )
+    except Exception:
+        logging.exception("ODrive 串口打开失败")
+        return
+
     try:
         prepare_axis0_closed_loop(odrive_instance)
     except Exception:
-        logging.exception("AXIS0 闭环启动失败")
+        logging.exception("ODrive 已连接，但 AXIS0 闭环启动被拒绝")
         odrive_instance.close()
         return
 
-    log_thread = threading.Thread(
-        target=tuning_log_thread_function,
-        name="TuningLogThread",
-    )
     worker_threads = [
         threading.Thread(target=ch100_thread_function, name="CH100Thread"),
         threading.Thread(
@@ -577,7 +728,6 @@ def main():
         ),
     ]
 
-    log_thread.start()
     for thread in worker_threads:
         thread.start()
     logging.info(
@@ -599,7 +749,6 @@ def main():
         stop_event.set()
         for thread in worker_threads:
             thread.join()
-        log_thread.join()
         try:
             stop_axis0_and_enter_idle(odrive_instance)
             logging.info("已将轴 0 减速至零并切换到 IDLE")
