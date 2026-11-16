@@ -1,10 +1,13 @@
 # motor_control_ui.py
+import json
 import math
 import os
 import sys
 import tempfile
 import time
 from collections import deque
+from pathlib import Path
+from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import (
     QApplication,
     QWidget,
@@ -19,8 +22,99 @@ from PyQt5.QtWidgets import (
     QMessageBox,
 )
 from PyQt5.QtCore import QLockFile, Qt, QTimer
-from PyQt5.QtGui import QPalette, QColor
+from PyQt5.QtGui import QPalette, QColor, QPainter, QPen
 from odrive_protocol.odrive_protocol import ODriveAsciiProtocol
+from ch100_protocol.ch100_protocol import CH100Device
+
+
+class CH100Worker(QObject):
+    data_ready = pyqtSignal(object)
+    error = pyqtSignal(str)
+    finished = pyqtSignal()
+
+    def __init__(self, port, baudrate):
+        super().__init__()
+        self.port = port
+        self.baudrate = baudrate
+        self._running = True
+        self.device = None
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            self.device = CH100Device(self.port, self.baudrate)
+            self.device.open()
+            self.data_ready.emit(None)
+            while self._running:
+                for frame in self.device.read_and_parse():
+                    acceleration = frame.get("acc")
+                    if acceleration and len(acceleration) == 3:
+                        self.data_ready.emit(tuple(float(value) for value in acceleration))
+        except Exception as exc:
+            if self._running:
+                self.error.emit(
+                    f"CH100 {self.port} 读取失败: {type(exc).__name__}: {exc}"
+                )
+        finally:
+            try:
+                if self.device is not None:
+                    self.device.close()
+            except Exception as exc:
+                if self._running:
+                    self.error.emit(
+                        f"CH100 {self.port} 关闭失败: {type(exc).__name__}: {exc}"
+                    )
+            finally:
+                self.finished.emit()
+
+    def stop(self):
+        self._running = False
+
+
+class AccelerationPlot(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.samples = deque(maxlen=250)
+        self.setMinimumHeight(150)
+
+    def add_sample(self, values):
+        self.samples.append(values)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(17, 19, 24))
+        left, top, right, bottom = 42, 28, self.width() - 12, self.height() - 24
+        plot_width, plot_height = right - left, bottom - top
+        if plot_width <= 0 or plot_height <= 0:
+            return
+
+        colors = (QColor(244, 92, 92), QColor(91, 205, 133), QColor(86, 162, 244))
+        for axis, label in enumerate(("X", "Y", "Z")):
+            painter.setPen(colors[axis])
+            painter.drawText(left + axis * 36, 18, label)
+
+        painter.setPen(QPen(QColor(75, 82, 93), 1))
+        painter.drawLine(left, top, left, bottom)
+        painter.drawLine(left, bottom, right, bottom)
+        for fraction in (0.25, 0.5, 0.75):
+            y = int(top + fraction * plot_height)
+            painter.drawLine(left, y, right, y)
+        painter.setPen(QColor(190, 197, 208))
+        painter.drawText(2, top + 5, "+20")
+        painter.drawText(18, top + plot_height // 2 + 5, "0")
+        painter.drawText(2, bottom, "-20")
+
+        painter.setClipRect(left, top, plot_width, plot_height)
+        for axis in range(3):
+            points = []
+            for index, sample in enumerate(self.samples):
+                x = left + index * plot_width / max(1, len(self.samples) - 1)
+                y = top + (1.0 - (sample[axis] / 20.0 + 1.0) / 2.0) * plot_height
+                points.append((int(x), int(y)))
+            painter.setPen(QPen(colors[axis], 2))
+            for first, second in zip(points, points[1:]):
+                painter.drawLine(first[0], first[1], second[0], second[1])
 
 
 class MotorControlUI(QWidget):
@@ -46,11 +140,14 @@ class MotorControlUI(QWidget):
         self._velocity_samples = deque(maxlen=5)
         self._peak_velocity_rate = 0.0
         self._peak_current = 0.0
+        self._acceleration_history = deque(maxlen=250)
+        self._imu_thread = None
+        self._imu_worker = None
         self.init_ui()
 
     def init_ui(self):
         self.setWindowTitle("Motor Control")
-        self.resize(400, 400)
+        self.resize(560, 820)
 
         # Dark Theme Palette
         dark_palette = QPalette()
@@ -213,6 +310,19 @@ class MotorControlUI(QWidget):
         layout.addWidget(self.velocity_rate_label)
         self.current_feedback_label = QLabel("Motor current: -- A | peak: 0.00 A", self)
         layout.addWidget(self.current_feedback_label)
+
+        imu_layout = QVBoxLayout()
+        self.imu_status_label = QLabel("CH100: starting...", self)
+        imu_layout.addWidget(self.imu_status_label)
+        self.acceleration_label = QLabel(
+            "CH100 acceleration (raw units): X -- | Y -- | Z --", self
+        )
+        imu_layout.addWidget(self.acceleration_label)
+        self.acceleration_plot = AccelerationPlot(self)
+        imu_layout.addWidget(self.acceleration_plot)
+        layout.addLayout(imu_layout)
+        self._start_imu_monitor()
+
         self.telemetry_timer = QTimer(self)
         self.telemetry_timer.setInterval(20)
         self.telemetry_timer.timeout.connect(self.update_live_velocity_rate)
@@ -262,6 +372,54 @@ class MotorControlUI(QWidget):
         layout.addWidget(self.clear_errors_button)
 
         self.setLayout(layout)
+
+    def _start_imu_monitor(self):
+        config_path = Path(__file__).resolve().with_name("config.json")
+        try:
+            with config_path.open("r", encoding="utf-8-sig") as config_file:
+                ch100_config = json.load(config_file)["ch100"]
+            port = ch100_config["port"]
+            baudrate = int(ch100_config["baudrate"])
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            self.imu_status_label.setText(
+                f"CH100 配置错误: {type(exc).__name__}: {exc}"
+            )
+            return
+
+        self._imu_thread = QThread(self)
+        self._imu_worker = CH100Worker(port, baudrate)
+        self._imu_worker.moveToThread(self._imu_thread)
+        self._imu_thread.started.connect(self._imu_worker.run)
+        self._imu_worker.data_ready.connect(self._handle_imu_data)
+        self._imu_worker.error.connect(self._show_imu_error)
+        self._imu_worker.finished.connect(self._imu_worker.deleteLater)
+        self._imu_worker.finished.connect(self._imu_thread.quit)
+        self._imu_thread.finished.connect(self._on_imu_thread_finished)
+        self.imu_status_label.setText(f"CH100: connecting to {port} @ {baudrate}")
+        self._imu_thread.start()
+
+    def _handle_imu_data(self, acceleration):
+        if acceleration is None:
+            self.imu_status_label.setText("CH100: connected; waiting for data")
+            return
+        self._update_acceleration(acceleration)
+
+    def _update_acceleration(self, acceleration):
+        self._acceleration_history.append(acceleration)
+        self.acceleration_label.setText(
+            "CH100 acceleration (raw units): "
+            f"X {acceleration[0]:+.3f} | Y {acceleration[1]:+.3f} | "
+            f"Z {acceleration[2]:+.3f}"
+        )
+        self.imu_status_label.setText("CH100: receiving data")
+        self.acceleration_plot.add_sample(acceleration)
+
+    def _show_imu_error(self, message):
+        self.imu_status_label.setText(message)
+
+    def _on_imu_thread_finished(self):
+        self._imu_worker = None
+        self._imu_thread = None
 
     def connect_odrive(self):
         if self.odrive is not None:
@@ -1143,6 +1301,15 @@ class MotorControlUI(QWidget):
         return True
 
     def closeEvent(self, event):
+        if self._imu_worker is not None and self._imu_thread is not None:
+            self._imu_worker.stop()
+            self._imu_thread.quit()
+            if not self._imu_thread.wait(2000):
+                self.imu_status_label.setText(
+                    "CH100 shutdown timed out; close the window again to retry"
+                )
+                event.ignore()
+                return
         if self.disconnect_odrive():
             event.accept()
         else:

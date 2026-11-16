@@ -211,11 +211,32 @@ class MotorControlUIConnectionTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication(sys.argv)
 
     def setUp(self):
+        self.start_imu_patch = patch.object(MotorControlUI, "_start_imu_monitor")
+        self.start_imu_patch.start()
+        self.addCleanup(self.start_imu_patch.stop)
         self.window = MotorControlUI()
         self.window.port_input.setText("COM27")
 
     def tearDown(self):
         self.window.close()
+
+    def test_acceleration_updates_values_and_plot_history(self):
+        self.window._update_acceleration((1.25, -2.5, 9.81))
+
+        self.assertEqual(
+            self.window.acceleration_label.text(),
+            "CH100 acceleration (raw units): X +1.250 | Y -2.500 | Z +9.810",
+        )
+        self.assertEqual(self.window._acceleration_history[-1], (1.25, -2.5, 9.81))
+        self.assertEqual(self.window.acceleration_plot.samples[-1], (1.25, -2.5, 9.81))
+
+    def test_imu_error_is_visible_in_status(self):
+        self.window._show_imu_error("CH100 COM26 读取失败: OSError: busy")
+
+        self.assertEqual(
+            self.window.imu_status_label.text(),
+            "CH100 COM26 读取失败: OSError: busy",
+        )
 
     @patch("motor_control_ui.ODriveAsciiProtocol")
     def test_disconnect_releases_port_and_allows_reconnect(self, protocol_class):

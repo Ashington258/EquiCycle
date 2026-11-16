@@ -8,15 +8,26 @@ not modify the Jetson runtime in `control_unit/src`.
 Edit `src/config.json` if Windows assigns different COM ports:
 
 - CH100: `COM26` at `460800` baud
-- ODrive: `COM32` at `460800` baud
-- ODrive axis 0 current limit: `90.0 A`
+- ODrive: `COM33` at `460800` baud
+- ODrive axis 0 hard limits: `30.0 A`, `1.0 Nm`, and `15.0 rev/s`
 
-After `ARM`, the runtime writes `odrive.current_limit_a` to
-`axis0.motor.config.current_lim` before requesting closed loop, then reads it
-back. Startup is aborted if the readback differs by more than `0.01 A`. This is
-a runtime setting; it is not saved to ODrive nonvolatile configuration. Use
-`90 A` only when the motor, ODrive, wiring, battery, and protection system are
-rated for it, and keep the emergency cutoff available.
+After `ARM`, the runtime writes and reads back the fixed limits
+`axis0.motor.config.current_lim=30.0`, `axis0.motor.config.torque_lim=1.0`,
+and `axis0.controller.config.vel_limit=15.0` before requesting closed loop.
+Startup is aborted if any readback differs by more than `0.01` in its unit. These
+are runtime safety limits and are not saved to ODrive nonvolatile configuration;
+they must not be automatically increased.
+
+The tested ODrive velocity-loop gains are `vel_gain=0.10` and
+`vel_integrator_gain=0.08`. Anticogging and automatic closed-loop startup are
+disabled. The incremental encoder is saved as pre-calibrated, keeps startup
+index search enabled, and does not repeat offset calibration on every boot. The
+recovery script `odrive_apply_previous_config.py` currently specifies `60 A`
+and derives its torque limit from `60 * torque_constant`; it does not match the
+runtime's `30.0 A` / `1.0 Nm` limits and should not be run without checking the
+hardware and resolving that discrepancy. Do not restore the former `0.65` / `0.20` gains:
+they produced a measured zero-speed oscillation of approximately ±0.35 rev/s
+and ±6 A on the replacement ODrive.
 
 The three cascaded PID loops are configured in
 `src/balance_control/balance_control.py`, inside
@@ -24,8 +35,23 @@ The three cascaded PID loops are configured in
 `angle_pid` is the pitch-angle middle loop, and `gyro_pid` is the pitch-rate
 inner loop. On startup, the program prints all three loops' gains and limits,
 then checks both serial ports before showing the `ARM` prompt.
-`MOTOR_SPEED_SLEW_RATE` is `4000.0 rev/s²`; each command is limited to the
-measured speed plus or minus this rate times the control interval.
+`MOTOR_SPEED_SLEW_RATE` is `4000.0 rev/s²`; each software command is limited to
+the measured speed plus or minus this rate times the control interval. ODrive's
+independent `vel_ramp_rate` safety limit is `60.0 rev/s²` and is applied when
+`input_mode=2` (velocity ramp mode).
+
+The motor UI reads the selected axis's ODrive current, torque and velocity-ramp
+settings on connection and shows their last-read values separately from the
+editable, safety-capped controls. Editing a control does not update the drive;
+`Apply Limits` writes and verifies the settings, selects velocity/ramp mode,
+and enters closed loop. The ramp only applies in velocity control
+(`control_mode=2`, `input_mode=2`); the position slider selects position mode
+and therefore does not use the velocity-ramp limit. `torque_lim` is a ceiling
+in Nm, not a commanded torque; status shows estimated torque as measured
+`Iq_measured * torque_constant`. Do not infer the active hardware setting from
+an editable control clipped to the UI maximum. The historical UI in commit
+`fa5f4ed` sent position and velocity commands without configuring these limits.
+Verify the selected axis, errors, power and readback before motion tests.
 
 The servo and servo listener are not started in this runtime.
 
@@ -40,10 +66,55 @@ python -m pip install -r requirements.txt
 python src\main.py
 ```
 
+To use the standalone motor-control UI with live CH100 acceleration values and
+a rolling three-axis plot, launch it from this directory instead:
+
+```powershell
+python src\motor_control_ui.py
+```
+
+The UI reads CH100 port and baud rate from `src\config.json`. It displays the
+raw acceleration values supplied by the CH100 parser; verify the sensor's scale
+before interpreting them as physical units. Close `main.py` and any other
+program using either serial port before launching the UI, because serial ports
+cannot be shared between these applications.
+
+For a controlled interactive run, add `--auto-arm-balance` only after the
+vehicle is secured and the emergency cutoff is ready. This skips the `ARM`
+prompt and enters `BALANCE` automatically after ODrive closed-loop startup:
+
+```powershell
+python src\main.py --auto-arm-balance
+```
+
+For a non-interactive launch, use `--balance-duration` to hold BALANCE for a
+specified number of seconds and then execute the normal safe STOP sequence:
+
+```powershell
+python src\main.py --auto-arm-balance --balance-duration 10
+```
+
+Alternatively, provide a command file. Commands are processed in order;
+`WAIT <seconds>` delays the next command, and comments beginning with `#` are
+ignored. For example, `commands.txt` can contain:
+
+```text
+# Hold balance for ten seconds
+WAIT 10
+STOP
+```
+
+Run it with:
+
+```powershell
+python src\main.py --auto-arm-balance --command-file .\commands.txt
+```
+
 The program checks both serial ports, then asks for the exact confirmation
 `ARM`. After confirmation it rejects any axis, motor, or encoder error, verifies
-that axis 0 is calibrated, selects velocity/passthrough control, and enters
-closed loop. It starts in docked mode with the measured dock angle of `+9.47`
+that axis 0 is calibrated, selects velocity/ramp control with a verified
+`vel_ramp_rate` of `60.0 rev/s²`, and enters closed loop. It starts in docked
+mode with the measured dock angle of `+9.47`
 degrees and holds ODrive axis 0 at zero speed. Enter `BALANCE` only after the
 landing clamp is ready to release; this resets the controllers and switches the
 pitch setpoint to `0.00` degrees. After entering `BALANCE`, enter `STOP` to end
@@ -75,21 +146,31 @@ loop was a shutdown lifecycle defect, but does not by itself prove the cause
 of SYSTEM_LEVEL. Investigate the protection trigger before clearing errors;
 this runtime does not bypass protection or automatically clear faults.
 
+Fault reports decode the legacy axis, motor, controller, and encoder bitmasks
+and capture the current state, DC bus voltage, current limit and margin, and
+requested/measured q-axis current. For example, motor error `0x10001000` is
+`CURRENT_LIMIT_VIOLATION|UNKNOWN_TORQUE`; it is not proof that the motor merely
+failed to produce requested torque. Check supply droop, phase wiring, motor
+configuration, mechanical load, and the captured current values before
+clearing the fault. Do not increase current limits as a substitute for finding
+the protection trigger.
+
 While running, the terminal reports the CH100 pitch angle, active pitch
 setpoint, commanded velocity, encoder-measured velocity, and controller status
 about once per second. Velocities are shown in both revolutions per second and
-RPM.
+RPM. While the program is waiting for operator input, use `PID?` to view gains
+or `PID <velocity|angle|gyro> <kp> <ki> <kd>` to hot-update one loop. Each
+update resets that loop's integral and derivative history. These changes are
+runtime-only and are not saved to ODrive or files.
 
 Starting `main.py` also starts parameter-tuning capture automatically. Each run
 creates `logs\balance_tuning_YYYYMMDD_HHMMSS.csv` containing the host time,
 elapsed time, pitch angle, gyro X, encoder-measured motor speed, velocity-loop
 output, angle-loop output, raw three-cascade PID output, output after slew-rate
-and speed limiting, and measured motor current. The control thread only submits
-completed rows with a non-blocking operation to a bounded queue. A dedicated
-logging thread writes batches of 50 rows and flushes at least every 0.5 seconds,
-then drains the queue during normal shutdown. If storage cannot keep up and the
-queue reaches 4096 rows, new log rows are dropped and reported instead of
-blocking control; observation and motor control continue.
+and speed limiting, and measured motor current. The control thread writes each
+completed row directly to the CSV file and flushes it immediately. ODrive feedback
+reads use a 10 ms monotonic-clock cadence; missed periods are skipped rather than
+replayed in a burst. Disk or serial latency can still cause missed periods.
 Motor current is read from
 `axis0.motor.current_control.Iq_measured`; close other ODrive serial clients
 before startup. The capture also records `Iq_setpoint`, the configured current

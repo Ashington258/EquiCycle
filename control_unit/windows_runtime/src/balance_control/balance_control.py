@@ -87,8 +87,8 @@ class CascadedPIDController:
         self.velocity_pid = PIDController(
             0.0, 0.0, 0.0, 800.0, (-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT)
         )
-        self.angle_pid = PIDController(3.206, 0.0, 0.22, 400.0, (-25.0, 25.0))
-        self.gyro_pid = PIDController(3.062, 0.0, 0, 0.0, (-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
+        self.angle_pid = PIDController(2.5, 0.0, 0.22, 400.0, (-25.0, 25.0))
+        self.gyro_pid = PIDController(2.0, 0.0, 0, 0.0, (-MOTOR_SPEED_LIMIT, MOTOR_SPEED_LIMIT))
         self.reset()
 
     def reset(self):
@@ -286,6 +286,26 @@ def process_steer_dynamicAngle(message):
     dynamic_angle_steer = factor_dynamic_steer * (message-978)
                 
 CascadePIDclass = CascadedPIDController()
+
+
+def set_pid_parameters(loop_name, kp=None, ki=None, kd=None):
+    pid_by_name = {
+        "velocity": CascadePIDclass.velocity_pid,
+        "angle": CascadePIDclass.angle_pid,
+        "gyro": CascadePIDclass.gyro_pid,
+    }
+    if loop_name not in pid_by_name:
+        raise ValueError("PID 环路必须是 velocity、angle 或 gyro")
+    pid = pid_by_name[loop_name]
+    with control_params_lock:
+        for name, value in (("kp", kp), ("ki", ki), ("kd", kd)):
+            if value is not None:
+                value = float(value)
+                if not math.isfinite(value):
+                    raise ValueError(f"{name} 必须是有限数值")
+                setattr(pid, name, value)
+        pid.reset()
+    return get_pid_parameters()[loop_name]
 
 
 def get_pid_parameters():

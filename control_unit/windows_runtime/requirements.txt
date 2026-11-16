@@ -1,5 +1,5 @@
 pyserial
 pyzmq>=25.0
 matplotlib>=3.7
-odrive==0.6.11.post1
+odrive==0.6.9.post0
 

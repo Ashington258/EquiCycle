@@ -1,3 +1,4 @@
+import argparse
 import csv
 import json
 import logging
@@ -16,6 +17,7 @@ from balance_control.balance_control import (
     PITCH_STOP_ANGLE,
     adjust_motor_speed,
     get_pid_parameters,
+    set_pid_parameters,
     update_control_data,
     get_balance_status,
     get_pitch_status,
@@ -665,12 +667,36 @@ def log_pid_parameters():
 
 
 def handle_operator_command(command):
-    command = command.strip().upper()
-    if command == "BALANCE":
+    command = command.strip()
+    command_upper = command.upper()
+    if command_upper.startswith("PID "):
+        parts = command.split()
+        if len(parts) != 5:
+            logging.warning("格式：PID <velocity|angle|gyro> <kp> <ki> <kd>")
+            return False
+        try:
+            loop_name = parts[1].lower()
+            updated = set_pid_parameters(
+                loop_name, kp=float(parts[2]), ki=float(parts[3]), kd=float(parts[4])
+            )
+            logging.info(
+                "已更新 %s PID：Kp=%g, Ki=%g, Kd=%g；积分状态已清零",
+                loop_name,
+                updated["kp"],
+                updated["ki"],
+                updated["kd"],
+            )
+        except (TypeError, ValueError) as exc:
+            logging.warning("PID 参数未更新：%s", exc)
+        return False
+    if command_upper == "PID?":
+        log_pid_parameters()
+        return False
+    if command_upper == "BALANCE":
         set_balance_mode(BALANCE_MODE_ACTIVE)
         logging.info("已切换到自平衡模式，pitch 目标=0.00°")
         return False
-    if command == "STOP":
+    if command_upper == "STOP":
         mode, _setpoint = get_balance_status()
         if mode != BALANCE_MODE_ACTIVE:
             logging.warning("尚未进入 BALANCE 模式，STOP 指令未执行")
@@ -682,7 +708,31 @@ def handle_operator_command(command):
     return False
 
 
+def parse_startup_arguments():
+    parser = argparse.ArgumentParser(description="Windows CH100 + ODrive pitch 控制")
+    parser.add_argument(
+        "--auto-arm-balance",
+        action="store_true",
+        help="通过启动确认后自动输入 ARM，并在闭环启动后自动进入 BALANCE",
+    )
+    parser.add_argument(
+        "--command-file",
+        type=Path,
+        default=None,
+        help="自动模式下读取运行命令的文本文件，每行一条命令",
+    )
+    parser.add_argument(
+        "--balance-duration",
+        type=float,
+        default=None,
+        help="自动进入 BALANCE 后保持指定秒数，再执行 STOP",
+    )
+    return parser.parse_args(args=[] if __name__ != "__main__" else None)
+
+
 def main():
+    startup_arguments = parse_startup_arguments()
+    stop_event.clear()
     print("Windows CH100 + ODrive pitch 控制")
     print("启动后将向 ODrive 轴 0 发送真实速度命令。")
     print("请先架空驱动轮、确认急停可用，并检查 ODrive 当前状态和残留目标。")
@@ -694,7 +744,11 @@ def main():
         logging.exception("启动前 CH100 串口自检失败")
         return
 
-    if input("准备好后输入 ARM 启动；其他输入退出: ").strip() != "ARM":
+    if startup_arguments.auto_arm_balance:
+        logging.warning(
+            "已启用 --auto-arm-balance：将自动确认 ARM，并在闭环启动后进入 BALANCE。"
+        )
+    elif input("准备好后输入 ARM 启动；其他输入退出: ").strip() != "ARM":
         print("已取消启动。")
         return
 
@@ -735,16 +789,58 @@ def main():
         ch100_config["port"],
         odrive_config["port"],
     )
+    if startup_arguments.auto_arm_balance:
+        handle_operator_command("BALANCE")
 
     try:
-        while any(thread.is_alive() for thread in worker_threads):
-            command = input(
-                "输入 BALANCE 切换到 pitch=0°；进入平衡后输入 STOP 停止: "
+        if startup_arguments.balance_duration is not None:
+            if startup_arguments.balance_duration < 0:
+                raise ValueError("--balance-duration 必须为非负数")
+            logging.info(
+                "自动 BALANCE 将持续 %.3f 秒，然后执行 STOP",
+                startup_arguments.balance_duration,
             )
-            if handle_operator_command(command):
-                break
-    except KeyboardInterrupt:
-        logging.warning("检测到 Ctrl+C，将执行与 STOP 相同的紧急安全停止")
+            deadline = time.monotonic() + startup_arguments.balance_duration
+            while time.monotonic() < deadline and any(
+                thread.is_alive() for thread in worker_threads
+            ):
+                time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+            handle_operator_command("STOP")
+        elif startup_arguments.command_file is not None:
+            if not startup_arguments.command_file.exists():
+                logging.error("命令文件不存在：%s", startup_arguments.command_file)
+            else:
+                for command in startup_arguments.command_file.read_text(
+                    encoding="utf-8-sig"
+                ).splitlines():
+                    command = command.strip()
+                    if not command or command.startswith("#"):
+                        continue
+                    if command.upper().startswith("WAIT "):
+                        wait_seconds = float(command.split(maxsplit=1)[1])
+                        if wait_seconds < 0:
+                            raise ValueError("WAIT 秒数必须为非负数")
+                        deadline = time.monotonic() + wait_seconds
+                        while time.monotonic() < deadline and any(
+                            thread.is_alive() for thread in worker_threads
+                        ):
+                            time.sleep(
+                                min(0.05, max(0.0, deadline - time.monotonic()))
+                            )
+                    elif handle_operator_command(command):
+                        break
+                    else:
+                        continue
+                        break
+        else:
+            while any(thread.is_alive() for thread in worker_threads):
+                command = input(
+                    "输入 BALANCE 切换到 pitch=0°；PID? 查看；PID <loop> <kp> <ki> <kd> 热更新；STOP 停止: "
+                )
+                if handle_operator_command(command):
+                    break
+    except (KeyboardInterrupt, EOFError):
+        logging.warning("检测到 Ctrl+C/输入结束，将执行与 STOP 相同的紧急安全停止")
     finally:
         stop_event.set()
         for thread in worker_threads:

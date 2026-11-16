@@ -226,6 +226,24 @@ class PitchControlTests(unittest.TestCase):
         balance_control.set_balance_mode(balance_control.BALANCE_MODE_DOCKED)
         self.assertEqual(balance_control.CascadePIDclass.velocity_pid.integral, 0.0)
 
+    def test_set_pid_parameters_updates_selected_loop_and_resets_history(self):
+        balance_control.CascadePIDclass.angle_pid.integral = 12.0
+        balance_control.CascadePIDclass.angle_pid.previous_error = 3.0
+
+        updated = balance_control.set_pid_parameters(
+            "angle", kp=2.0, ki=0.1, kd=0.3
+        )
+
+        self.assertEqual(updated["kp"], 2.0)
+        self.assertEqual(updated["ki"], 0.1)
+        self.assertEqual(updated["kd"], 0.3)
+        self.assertEqual(balance_control.CascadePIDclass.angle_pid.integral, 0.0)
+        self.assertIsNone(balance_control.CascadePIDclass.angle_pid.previous_error)
+
+    def test_set_pid_parameters_rejects_non_finite_values(self):
+        with self.assertRaises(ValueError):
+            balance_control.set_pid_parameters("gyro", kp=float("nan"))
+
     def test_pid_parameters_report_all_cascade_loops(self):
         parameters = balance_control.get_pid_parameters()
 
@@ -233,12 +251,12 @@ class PitchControlTests(unittest.TestCase):
         self.assertEqual(parameters["velocity"]["kp"], 0.0)
         self.assertEqual(parameters["velocity"]["ki"], 0.0)
         self.assertEqual(parameters["velocity"]["kd"], 0.0)
-        self.assertEqual(parameters["angle"]["kp"], 2.45)
+        self.assertEqual(parameters["angle"]["kp"], 2.5)
         self.assertEqual(parameters["angle"]["ki"], 0.0)
-        self.assertEqual(parameters["angle"]["kd"], 1.5)
-        self.assertEqual(parameters["gyro"]["kp"], 2.59)
+        self.assertEqual(parameters["angle"]["kd"], 0.22)
+        self.assertEqual(parameters["gyro"]["kp"], 2.0)
         self.assertEqual(parameters["gyro"]["ki"], 0.0)
-        self.assertEqual(parameters["gyro"]["kd"], 0.12)
+        self.assertEqual(parameters["gyro"]["kd"], 0.0)
 
     def test_stale_pitch_stops_motor_zero(self):
         balance_control.set_balance_mode(balance_control.BALANCE_MODE_ACTIVE)
